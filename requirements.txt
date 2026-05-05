@@ -4,3 +4,4 @@ fastapi
 httpx
 psycopg2-binary
 jose
+uvicorn
