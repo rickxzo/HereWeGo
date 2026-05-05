@@ -6,14 +6,15 @@ from dotenv import load_dotenv
 import os
 load_dotenv()
 
-from fastapi import FastAPI, Depends, HTTPException
-from fastapi.responses import RedirectResponse
+from fastapi import FastAPI, Depends, HTTPException, Request, UploadFile, File
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from uuid import UUID
 
 import httpx
 import psycopg2
 import subprocess
+import requests
 
 from jose import jwt
 from datetime import datetime, timedelta
@@ -56,9 +57,10 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
         raise HTTPException(status_code=401, detail="Invalid token")
 
 
-@app.get("/")
-def read_root():
-    return {"message": "Welcome to the deployment platform API!"}
+@app.get("/", response_class=HTMLResponse)
+async def docs():
+    with open("demo.html", encoding="utf-8") as f:
+        return f.read()
 
 
 @app.get("/login/github")
@@ -163,14 +165,20 @@ def get_me(user_id: str = Depends(get_current_user)):
 
 @app.get("/api/github-repos")
 def get_github_repos(user_id: str = Depends(get_current_user)):
-    conn = connect_db()
-    cursor = conn.cursor()
+    try:
+        conn = connect_db()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Internal server error (DB Connection)")
 
-    cursor.execute(
-        "SELECT access_token FROM users WHERE id = %s",
-        (user_id,)
-    )
-    result = cursor.fetchone()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT access_token FROM users WHERE id = %s",
+            (user_id,)
+        )
+        result = cursor.fetchone()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Internal server error (DB Query) - " + str(e))
 
     cursor.close()
     conn.close()
@@ -180,11 +188,14 @@ def get_github_repos(user_id: str = Depends(get_current_user)):
 
     github_token = result[0]
 
-    import requests
-    res = requests.get(
-        "https://api.github.com/user/repos",
-        headers={"Authorization": f"Bearer {github_token}"}
-    )
+    try:
+        res = requests.get(
+            "https://api.github.com/user/repos",
+            headers={"Authorization": f"Bearer {github_token}"}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Internal server error (GitHub API) - " + str(e))
+
     repos = [
         {   
             "id": repo["id"],
@@ -193,7 +204,6 @@ def get_github_repos(user_id: str = Depends(get_current_user)):
         }
         for repo in res.json()
     ]
-    print(repos)  
     return repos
 
 
@@ -242,19 +252,36 @@ def list_repos(user_id: str = Depends(get_current_user)):
     
 
 
-@app.get('/api/add_secrets')
-def add_secrets(
+@app.post('/api/add-secrets')
+async def add_secrets(
     repo_id: UUID,
-    name: str,
-    value: str,
+    request: Request,
     user_id: str = Depends(get_current_user)
 ):
+    try:
+        body = await request.body()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Internal server error (Request Body)")
+    content = body.decode("utf-8")
+    content = content.split("\n")
+    secrets = {}
+    try:
+        for line in content:
+            if "=" in line:
+                name, value = line.split("=", 1)
+                secrets[name.strip()] = value.strip()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Internal server error (Processing Secrets) - " + str(e))
+    cmd = "INSERT INTO Secrets (repo_id, name, value) VALUES "
+
+    for name, value in secrets.items():
+        cmd += f"('{str(repo_id)}', '{name}', '{value}'),"
+
     try:
         conn = connect_db()
         cursor = conn.cursor()
         cursor.execute(
-            "INSERT INTO Secrets (repo_id, name, value) VALUES (%s, %s, %s)",
-            (str(repo_id), name, value)
+            cmd[:-1]
         )
         conn.commit()
         return {"status": "secret added"}
@@ -384,13 +411,19 @@ async def rollback(
     deployment_id: str,
     user_id: str = Depends(get_current_user)
 ):
-    conn = connect_db()
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT instance_id FROM Deployments WHERE id = %s",
-        (deployment_id,)
-    )
-    result = cursor.fetchone()
+    try:
+        conn = connect_db()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Internal server error (DB Connection in rollback)")
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT instance_id FROM Deployments WHERE id = %s",
+            (deployment_id,)
+        )
+        result = cursor.fetchone()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Internal server error (DB Query in rollback) - " + str(e))
     if not result:
         raise HTTPException(status_code=404, detail="Deployment not found")
     instance_id = result[0]
@@ -418,11 +451,17 @@ async def list_deployments(
     repo_id: str,
     user_id: str = Depends(get_current_user)
 ):
-    conn = connect_db()
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT id, link, status FROM Deployments WHERE repo_id = %s",
-        (repo_id,)
-    )
-    deployments = cursor.fetchall()
+    try:
+        conn = connect_db()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Internal server error (DB Connection in list deployments)")
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT id, link, status FROM Deployments WHERE repo_id = %s",
+            (repo_id,)
+        )
+        deployments = cursor.fetchall()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Internal server error (DB Query in list deployments) - " + str(e))
     return [{"id": d[0], "link": d[1], "status": d[2]} for d in deployments]
