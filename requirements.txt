@@ -1,0 +1,6 @@
+dotenv
+boto3
+fastapi
+httpx
+psycopg2-binary
+jose

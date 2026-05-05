@@ -1,0 +1,428 @@
+import random
+import boto3
+ec2 = boto3.client("ec2", region_name="us-east-1")
+
+from dotenv import load_dotenv
+import os
+load_dotenv()
+
+from fastapi import FastAPI, Depends, HTTPException
+from fastapi.responses import RedirectResponse
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from uuid import UUID
+
+import httpx
+import psycopg2
+import subprocess
+
+from jose import jwt
+from datetime import datetime, timedelta
+
+
+CLIENT_ID = os.getenv("CLIENT_ID")
+CLIENT_SECRET = os.getenv("CLIENT_SECRET")
+JWT_SECRET = os.getenv("JWT_SECRET")
+
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_DAYS = 7
+
+app = FastAPI()
+
+def connect_db():
+    return psycopg2.connect(
+        host="ep-soft-field-aoewhaic-pooler.c-2.ap-southeast-1.aws.neon.tech",
+        dbname="neondb",
+        user="neondb_owner",
+        password=os.getenv('NEONDB_PASS'),
+        sslmode="require",
+    )
+
+
+def create_access_token(data: dict):
+    to_encode = data.copy()
+    expire = datetime.utcnow() + timedelta(days=ACCESS_TOKEN_EXPIRE_DAYS)
+    to_encode.update({"exp": expire})
+    return jwt.encode(to_encode, JWT_SECRET, algorithm=ALGORITHM)
+
+
+security = HTTPBearer()
+
+def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    token = credentials.credentials
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[ALGORITHM])
+        return payload.get("user_id")
+    except:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+
+@app.get("/")
+def read_root():
+    return {"message": "Welcome to the deployment platform API!"}
+
+
+@app.get("/login/github")
+def login_github():
+    url = (
+        "https://github.com/login/oauth/authorize"
+        f"?client_id={CLIENT_ID}&scope=repo user"
+    )
+    return RedirectResponse(url)
+
+
+
+@app.get("/auth/github/callback")
+async def github_callback(code: str):
+    async with httpx.AsyncClient() as client:
+        token_res = await client.post(
+            "https://github.com/login/oauth/access_token",
+            headers={"Accept": "application/json"},
+            data={
+                "client_id": CLIENT_ID,
+                "client_secret": CLIENT_SECRET,
+                "code": code,
+            },
+        )
+
+        access_token = token_res.json().get("access_token")
+
+        user_res = await client.get(
+            "https://api.github.com/user",
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+
+        user_data = user_res.json()
+
+    conn = connect_db()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT id FROM users WHERE github_id = %s",
+        (user_data["id"],)
+    )
+    existing_user = cursor.fetchone()
+
+    if existing_user:
+        user_id = existing_user[0]
+
+        cursor.execute(
+            "UPDATE users SET access_token = %s WHERE github_id = %s",
+            (access_token, user_data["id"])
+        )
+
+    else:
+        cursor.execute(
+            """
+            INSERT INTO users (github_id, username, avatar, access_token)
+            VALUES (%s, %s, %s, %s)
+            RETURNING id
+            """,
+            (user_data["id"], user_data["login"], user_data["avatar_url"], access_token)
+        )
+        user_id = cursor.fetchone()[0]
+
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+    jwt_token = create_access_token({"user_id": str(user_id)})
+
+    return {
+        "token": jwt_token,
+        "user": {
+            "id": user_id,
+            "username": user_data["login"],
+            "avatar": user_data["avatar_url"]
+        }
+    }
+
+
+
+@app.get("/api/me")
+def get_me(user_id: str = Depends(get_current_user)):
+    conn = connect_db()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        "SELECT username, avatar FROM users WHERE id = %s",
+        (user_id,)
+    )
+    user = cursor.fetchone()
+
+    cursor.close()
+    conn.close()
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    return {
+        "user_id": user_id,
+        "username": user[0],
+        "avatar": user[1]
+    }
+
+
+@app.get("/api/github-repos")
+def get_github_repos(user_id: str = Depends(get_current_user)):
+    conn = connect_db()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        "SELECT access_token FROM users WHERE id = %s",
+        (user_id,)
+    )
+    result = cursor.fetchone()
+
+    cursor.close()
+    conn.close()
+
+    if not result:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    github_token = result[0]
+
+    import requests
+    res = requests.get(
+        "https://api.github.com/user/repos",
+        headers={"Authorization": f"Bearer {github_token}"}
+    )
+    repos = [
+        {   
+            "id": repo["id"],
+            "name": repo["name"],
+            "full_name": repo["full_name"]
+        }
+        for repo in res.json()
+    ]
+    print(repos)  
+    return repos
+
+
+
+@app.get("/api/create-repo")
+def create_repo(
+    repo_name: str,
+    build: str,
+    run: str,
+    user_id: str = Depends(get_current_user)
+):
+    try:
+        conn = connect_db()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Internal server error (DB Connection)")
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO Repos (user_id, name, build_cmd, run_cmd)
+            VALUES (%s, %s, %s, %s)
+            RETURNING id
+            """,
+            (user_id, repo_name, build, run)
+        )
+        conn.commit()
+        return {"repo_id": cursor.fetchone()[0]}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Internal server error (DB Insert for repo) {str(e)}")
+    
+
+
+@app.get("/api/repos")
+def list_repos(user_id: str = Depends(get_current_user)):
+    try:
+        conn = connect_db()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT * FROM Repos WHERE user_id = %s",
+            (user_id,)
+        )
+        projects = cursor.fetchall()
+        return [{"id": p[0], "name": p[2], "build_cmd": p[3], "run_cmd": p[4]} for p in projects]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Internal server error (DB Query)")
+    
+
+
+@app.get('/api/add_secrets')
+def add_secrets(
+    repo_id: UUID,
+    name: str,
+    value: str,
+    user_id: str = Depends(get_current_user)
+):
+    try:
+        conn = connect_db()
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO Secrets (repo_id, name, value) VALUES (%s, %s, %s)",
+            (str(repo_id), name, value)
+        )
+        conn.commit()
+        return {"status": "secret added"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Internal server error (DB Insert for secrets) - " + str(e))
+    
+
+
+@app.get("/api/deploy")
+async def deploy_repo(
+    repo_id: UUID,
+    user_id: str = Depends(get_current_user)
+):
+    try:
+        conn = connect_db()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Internal server error (DB Connection in deploy)")
+    
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT access_token FROM users WHERE id = %s",
+            (user_id,)
+        )
+        result = cursor.fetchone()
+        if not result:
+            raise HTTPException(status_code=404, detail="User not found")
+        github_token = result[0]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Internal server error (DB Query for user in deploy) - " + str(e))
+    
+    try:
+        cursor.execute(
+            "SELECT name, build_cmd, run_cmd FROM Repos WHERE id = %s",
+            (str(repo_id),)
+        )
+        result = cursor.fetchone()
+        if not result:
+            raise HTTPException(status_code=404, detail="Repo not found")
+        repo_name, build, run = result
+        conn.close()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Internal server error (DB Query in deploy) - " + str(e))
+    
+
+    clone_url = f"https://{github_token}@github.com/{repo_name}.git"
+
+
+    try:
+        conn = connect_db()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Internal server error (DB Connection in deploy)")
+    
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT name, value FROM Secrets WHERE repo_id = %s",
+            (str(repo_id),)  
+        )
+        secrets = cursor.fetchall()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Internal server error (DB Query for secrets in deploy)")
+    
+
+    user_data = f"""#!/bin/bash
+    set -e
+
+    yum update -y
+    yum install -y git python3 python3-pip
+
+    cd /home/ec2-user
+
+    git clone {clone_url}
+    cd {repo_name.split('/')[-1]}
+
+    python3 -m venv venv
+    source venv/bin/activate
+
+    source venv/bin/activate && {build}
+    
+    export PORT=5000
+    """
+    for name, value in secrets:
+        user_data += f"export {name}={value}\n"
+
+    user_data += f"source venv/bin/activate && {run}\n"
+
+    
+    response = ec2.run_instances(
+        ImageId="ami-0ed094fb1304fd857",  
+        InstanceType="t3.micro",
+        MinCount=1,
+        MaxCount=1,
+        KeyName="new-key",
+        SecurityGroupIds=["sg-0566bb2c3c816c67f"],  
+        UserData=user_data
+    )
+
+    instance_id = response["Instances"][0]["InstanceId"]
+    ec2.get_waiter('instance_running').wait(
+        InstanceIds=[instance_id]
+    )
+    desc = ec2.describe_instances(InstanceIds=[instance_id])
+    ip = desc["Reservations"][0]["Instances"][0]["PublicIpAddress"]
+
+    
+    
+    url = f"http://{ip}:5000"
+    conn = connect_db()
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO Deployments (repo_id, instance_id, link, status) VALUES (%s, %s, %s, %s)",
+        (str(repo_id), instance_id, url, "deployed")
+    )
+    conn.commit()
+    conn.close()
+    return {
+        "status": "deployed",
+        "url": url,
+        "deployment_id": cursor.lastrowid
+    }
+
+
+
+@app.get("/api/rollback")
+async def rollback(
+    deployment_id: str,
+    user_id: str = Depends(get_current_user)
+):
+    conn = connect_db()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT instance_id FROM Deployments WHERE id = %s",
+        (deployment_id,)
+    )
+    result = cursor.fetchone()
+    if not result:
+        raise HTTPException(status_code=404, detail="Deployment not found")
+    instance_id = result[0]
+    try:
+        ec2.terminate_instances(InstanceIds=[instance_id])
+        conn = connect_db()
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE Deployments SET status = %s WHERE id = %s",
+            ("rolled back", deployment_id)
+        )
+        conn.commit()
+        conn.close()
+        return {
+            "status": "rolled back",
+            "deployment_id": deployment_id
+}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Internal server error (EC2 Termination in rollback) - " + str(e))
+
+
+
+@app.get("/api/deployments")
+async def list_deployments(
+    repo_id: str,
+    user_id: str = Depends(get_current_user)
+):
+    conn = connect_db()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT id, link, status FROM Deployments WHERE repo_id = %s",
+        (repo_id,)
+    )
+    deployments = cursor.fetchall()
+    return [{"id": d[0], "link": d[1], "status": d[2]} for d in deployments]
