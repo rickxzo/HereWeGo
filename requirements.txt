@@ -5,3 +5,4 @@ httpx
 psycopg2-binary
 python-jose
 uvicorn
+requests
