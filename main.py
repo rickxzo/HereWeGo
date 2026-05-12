@@ -1,6 +1,8 @@
 import random
 import boto3
+from streamlit import echo
 ec2 = boto3.client("ec2", region_name="us-east-1")
+ssm = boto3.client("ssm")
 
 from dotenv import load_dotenv
 import os
@@ -17,7 +19,8 @@ import subprocess
 import requests
 
 from jose import jwt
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta
+import time as time2
 
 
 CLIENT_ID = os.getenv("CLIENT_ID")
@@ -290,6 +293,86 @@ async def add_secrets(
     
 
 
+@app.get("/api/rollback")
+async def rollback(
+    deployment_id: str,
+    user_id: str = Depends(get_current_user)
+):
+    try:
+        conn = connect_db()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Internal server error (DB Connection in rollback)")
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT D.instance_id, R.name, D.link FROM Deployments D JOIN Repos R ON D.repo_id = R.id WHERE D.id = %s",
+            (deployment_id,)
+        )
+        result = cursor.fetchone()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Internal server error (DB Query in rollback) - " + str(e))
+    if not result:
+        raise HTTPException(status_code=404, detail="Deployment not found")
+    instance_id = result[0]
+    repo_name = result[1].split("/")[-1]
+    port = result[2].split(":")[-1]
+    dir_name = repo_name + port
+    print(instance_id)
+    print(repo_name)
+    response = ssm.send_command(
+        InstanceIds=[instance_id],
+        DocumentName="AWS-RunShellScript",
+        Parameters={
+            "commands": [
+                f"cd /home/ec2-user/{dir_name}",
+                "kill $(cat app.pid)"
+            ]
+        }
+    )
+    command_id = response["Command"]["CommandId"]
+    time2.sleep(3)
+    print("Command sent:", command_id)
+    output = ssm.get_command_invocation(
+        CommandId=command_id,
+        InstanceId=instance_id
+    )
+    conn = connect_db()
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE Deployments SET status = %s WHERE id = %s",
+        ("rolled back", deployment_id)
+    )
+    conn.commit()
+    conn.close()
+    return {
+        "status": "rolled back",
+        "output": output
+    }
+
+
+
+@app.get("/api/deployments")
+async def list_deployments(
+    repo_id: str,
+    user_id: str = Depends(get_current_user)
+):
+    try:
+        conn = connect_db()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Internal server error (DB Connection in list deployments)")
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT id, link, status FROM Deployments WHERE repo_id = %s",
+            (repo_id,)
+        )
+        deployments = cursor.fetchall()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Internal server error (DB Query in list deployments) - " + str(e))
+    return [{"id": d[0], "link": d[1], "status": d[2]} for d in deployments]
+
+
+
 @app.get("/api/deploy")
 async def deploy_repo(
     repo_id: UUID,
@@ -342,126 +425,171 @@ async def deploy_repo(
             (str(repo_id),)  
         )
         secrets = cursor.fetchall()
+        conn.close()
     except Exception as e:
         raise HTTPException(status_code=500, detail="Internal server error (DB Query for secrets in deploy)")
     
+    conn = connect_db()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT S.instance_id, I.host, S.port FROM Slots S JOIN Instances I ON S.instance_id = I.id WHERE S.occupied = false ORDER BY S.created_at LIMIT 1"
+    )
+    slot = cursor.fetchone()
+    if not slot:
+        ec2_res = create_ec2()
+        instance_id = ec2_res["instance_id"]
+        host = ec2_res["host"]
+        port = 3000
+    else:
+        instance_id, host, port = slot
+        cursor.execute(
+            "UPDATE Slots SET occupied = true WHERE instance_id = %s AND port = %s",
+            (instance_id, port)
+        )
+        conn.commit()
+    conn.close()
 
-    user_data = f"""#!/bin/bash
-    set -e
-
-    yum update -y
-    yum install -y git python3 python3-pip
-
-    cd /home/ec2-user
-
-    git clone {clone_url}
-    cd {repo_name.split('/')[-1]}
-
-    python3 -m venv venv
-    source venv/bin/activate
-
-    source venv/bin/activate && {build}
-    
-    export PORT=5000
-    """
+    env_vars = ""
     for name, value in secrets:
-        user_data += f"export {name}={value}\n"
+        env_vars += f"export {name}={value}\n"
 
-    user_data += f"source venv/bin/activate && {run}\n"
+    #user_data += f"nohup bash -c 'source venv/bin/activate && {run}' > app.log 2>&1 & echo $! > app.pid\n"
+    response = ssm.send_command(
+        InstanceIds=[instance_id],
+        DocumentName="AWS-RunShellScript",
+        Parameters = {
+            "commands": [
+                "yum update -y",
+                "yum install -y git python3 python3-pip",
 
-    
-    response = ec2.run_instances(
-        ImageId="ami-0ed094fb1304fd857",  
-        InstanceType="t3.micro",
-        MinCount=1,
-        MaxCount=1,
-        KeyName="new-key",
-        SecurityGroupIds=["sg-0566bb2c3c816c67f"],  
-        UserData=user_data
+                "cd /home/ec2-user",
+
+                f"rm -rf {repo_name.split('/')[-1] + str(port)}",
+
+                f"git clone {clone_url} {repo_name.split('/')[-1] + str(port)}",
+
+                f"cd /home/ec2-user/{repo_name.split('/')[-1] + str(port)}",
+
+                "python3 -m venv venv",
+
+                "source venv/bin/activate",
+
+                f"{build} > app.log 2>&1",
+
+                f"export PORT={port}",
+
+                env_vars,
+
+                f"nohup sh -c 'source venv/bin/activate && {run}' > app.log 2>&1 & echo $! > app.pid\n"
+
+                #"echo $! > app.pid"
+            ]
+        }
     )
-
-    instance_id = response["Instances"][0]["InstanceId"]
-    ec2.get_waiter('instance_running').wait(
-        InstanceIds=[instance_id]
+    command_id = response["Command"]["CommandId"]
+    output = ssm.get_command_invocation(
+        CommandId=command_id,
+        InstanceId=instance_id
     )
-    desc = ec2.describe_instances(InstanceIds=[instance_id])
-    ip = desc["Reservations"][0]["Instances"][0]["PublicIpAddress"]
-
-    
-    
-    url = f"http://{ip}:5000"
+    print(output)
+    url = f"http://{host}:{port}"
     conn = connect_db()
     cursor = conn.cursor()
     cursor.execute(
         "INSERT INTO Deployments (repo_id, instance_id, link, status) VALUES (%s, %s, %s, %s)",
-        (str(repo_id), instance_id, url, "deployed")
+        (str(repo_id), instance_id, url, "deploy started")
     )
     conn.commit()
     conn.close()
     return {
-        "status": "deployed",
+        "status": "deploy started",
         "url": url,
         "deployment_id": cursor.lastrowid
     }
 
 
-
-@app.get("/api/rollback")
-async def rollback(
+@app.get("/api/logs")
+def get_logs(
     deployment_id: str,
     user_id: str = Depends(get_current_user)
 ):
     try:
         conn = connect_db()
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Internal server error (DB Connection in rollback)")
+        raise HTTPException(status_code=500, detail="Internal server error (DB Connection in get logs)")
     try:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT instance_id FROM Deployments WHERE id = %s",
+            "SELECT D.instance_id, R.name, D.link FROM Deployments D JOIN Repos R ON D.repo_id = R.id WHERE D.id = %s",
             (deployment_id,)
         )
         result = cursor.fetchone()
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Internal server error (DB Query in rollback) - " + str(e))
+        raise HTTPException(status_code=500, detail="Internal server error (DB Query in get logs) - " + str(e))
     if not result:
         raise HTTPException(status_code=404, detail="Deployment not found")
     instance_id = result[0]
+    repo_name = result[1].split("/")[-1]
+    port = result[2].split(":")[-1]
+    dir_name = repo_name + port
+    print(instance_id)
+    print(repo_name)
+    response = ssm.send_command(
+        InstanceIds=[instance_id],
+        DocumentName="AWS-RunShellScript",
+        Parameters={
+            "commands": [
+                f"cd /home/ec2-user/{dir_name}",
+                "tail -n 10 app.log"
+            ]
+        }
+    )
+    command_id = response["Command"]["CommandId"]
+    time2.sleep(3)
+    print("Command sent:", command_id)
+    output = ssm.get_command_invocation(
+        CommandId=command_id,
+        InstanceId=instance_id
+    )
+    print(output["StandardOutputContent"])
+    return {
+        "logs": output["StandardOutputContent"]
+    }
+
+
+@app.get("/api/create-ec2")
+def create_ec2():
     try:
-        ec2.terminate_instances(InstanceIds=[instance_id])
+        response = ec2.run_instances(
+            ImageId="ami-0ed094fb1304fd857",  
+            InstanceType="t3.micro",
+            MinCount=1,
+            MaxCount=1,
+            KeyName="new-key",
+            SecurityGroupIds=["sg-0566bb2c3c816c67f"], 
+            IamInstanceProfile={
+                "Name": "HereWeGo-SSM"
+            }, 
+        )
+        instance_id = response["Instances"][0]["InstanceId"]
+        ec2.get_waiter('instance_running').wait(
+            InstanceIds=[instance_id]
+        )
+        desc = ec2.describe_instances(InstanceIds=[instance_id])
+        host = desc["Reservations"][0]["Instances"][0]["PublicIpAddress"]
         conn = connect_db()
         cursor = conn.cursor()
         cursor.execute(
-            "UPDATE Deployments SET status = %s WHERE id = %s",
-            ("rolled back", deployment_id)
+            "INSERT INTO Instances (id, host) VALUES (%s, %s)", (instance_id, host)
+        )
+        cursor.execute(
+            "INSERT INTO Slots (instance_id, port, occupied) VALUES (%s, %s, %s), (%s, %s, %s), (%s, %s, %s), (%s, %s, %s), (%s, %s, %s)",
+            (instance_id, 3000, True, instance_id, 3001, False, instance_id,
+              3002, False, instance_id, 3003, False, instance_id, 3004, False
+            )
         )
         conn.commit()
         conn.close()
-        return {
-            "status": "rolled back",
-            "deployment_id": deployment_id
-}
+        return {"instance_id": instance_id, "host": host}
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Internal server error (EC2 Termination in rollback) - " + str(e))
-
-
-
-@app.get("/api/deployments")
-async def list_deployments(
-    repo_id: str,
-    user_id: str = Depends(get_current_user)
-):
-    try:
-        conn = connect_db()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail="Internal server error (DB Connection in list deployments)")
-    try:
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT id, link, status FROM Deployments WHERE repo_id = %s",
-            (repo_id,)
-        )
-        deployments = cursor.fetchall()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail="Internal server error (DB Query in list deployments) - " + str(e))
-    return [{"id": d[0], "link": d[1], "status": d[2]} for d in deployments]
+        raise HTTPException(status_code=500, detail="Internal server error (EC2 Creation) - " + str(e))
