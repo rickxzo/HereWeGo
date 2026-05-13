@@ -603,7 +603,7 @@ async def list_deployments(
     return [{"id": d[0], "link": d[1], "status": d[2]} for d in deployments]
 
 
-app.post("/api/send-logs")
+@app.post("/api/send-logs")
 async def send_logs(request: Request):
 
     data = await request.json()
