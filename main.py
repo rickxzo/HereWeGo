@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 import os
 load_dotenv()
 
-from fastapi import FastAPI, Depends, HTTPException, Request, UploadFile, File, logger
+from fastapi import FastAPI, Depends, HTTPException, Request, UploadFile, File
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from uuid import UUID
@@ -20,6 +20,12 @@ import requests
 from jose import jwt
 from datetime import datetime, time, timedelta
 import time as time2
+
+import logging
+
+logging.basicConfig(level=logging.INFO)
+
+logger = logging.getLogger(__name__)
 
 
 CLIENT_ID = os.getenv("CLIENT_ID")
