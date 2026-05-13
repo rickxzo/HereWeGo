@@ -369,7 +369,50 @@ async def deploy_repo(
     for name, value in secrets:
         env_vars += f"export {name}={value}\n"
 
-    
+    script = f""" 
+    import os
+    import time
+    import requests
+
+    LOG_FILE = os.environ.get("LOG_FILE", "app.log")
+
+    # Backend endpoint
+    BACKEND_URL = 'https://herewego-3kgp.onrender.com/api/send-logs'
+
+    APP_URL = 'http://{host}:{port}'
+
+    INTERVAL = 15
+
+    while not os.path.exists(LOG_FILE):
+        time.sleep(1)
+
+    with open(LOG_FILE, "r") as f:
+
+        # Start reading only new logs
+        f.seek(0, 2)
+
+        while True:
+
+            new_logs = f.readlines()
+
+            if new_logs:
+
+                try:
+
+                    requests.post(
+                        BACKEND_URL,
+                        json={
+                            "url": APP_URL,
+                            "logs": new_logs
+                        },
+                        timeout=10
+                    )
+
+                except Exception as e:
+                    logger.error("Failed to send logs:", e)
+
+            time.sleep(INTERVAL)
+    """
     response = ssm.send_command(
         InstanceIds=[instance_id],
         DocumentName="AWS-RunShellScript",
@@ -377,6 +420,7 @@ async def deploy_repo(
             "commands": [
                 "yum update -y",
                 "yum install -y git python3 python3-pip",
+                "pip install requests"
 
                 "cd /home/ec2-user",
 
@@ -385,6 +429,8 @@ async def deploy_repo(
                 f"git clone {clone_url} {repo_name.split('/')[-1] + str(port)}",
 
                 f"cd /home/ec2-user/{repo_name.split('/')[-1] + str(port)}",
+
+                f"echo '{script}' > log_sender.py",
 
                 "python3 -m venv venv",
 
@@ -396,9 +442,9 @@ async def deploy_repo(
 
                 env_vars,
 
-                f"nohup sh -c 'source venv/bin/activate && {run}' > app.log 2>&1 & echo $! > app.pid\n"
+                f"nohup sh -c 'source venv/bin/activate && {run}' > app.log 2>&1 & echo $! > app.pid\n",
 
-                #"echo $! > app.pid"
+                "nohup sh -c 'source venv/bin/activate && python3 log_sender.py' > logger.log 2>&1 & echo $! > logger.pid"
             ]
         }
     )
@@ -553,10 +599,10 @@ async def list_deployments(
 
 @app.post("/api/send-logs")
 def send_logs(
-    deployment_id: str,
+    url: str,
     logs: str
 ):
-    logger.error(logs)
+    logger.error(f"Logs from {url}:\n{logs}")
     return {"status": "logs received"}
     
 
