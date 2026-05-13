@@ -605,15 +605,17 @@ async def list_deployments(
 
 @app.post("/api/send-logs")
 async def send_logs(request: Request):
-
     data = await request.json()
-
-    logger.error(
-        f"Logs from {data['url']}:\n{''.join(data['logs'])}"
+    conn = connect_db()
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE Logs SET logs = COALESCE(logs, '') || '\n' || %s WHERE deployment_id = (SELECT id FROM Deployments WHERE link = %s)",
+        (data["logs"], data["url"])
     )
-
+    conn.commit()
+    conn.close()
+    logger.info(f"Received logs for {data['url']}: {data['logs']}")
     return {"status": "logs received"}
-    
 
 
 @app.get("/api/create-ec2")
