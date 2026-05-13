@@ -545,40 +545,15 @@ def get_logs(
     try:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT D.instance_id, R.name, D.link FROM Deployments D JOIN Repos R ON D.repo_id = R.id WHERE D.id = %s",
+            "SELECT logs FROM Logs WHERE deployment_id = %s",
             (deployment_id,)
         )
         result = cursor.fetchone()
     except Exception as e:
         raise HTTPException(status_code=500, detail="Internal server error (DB Query in get logs) - " + str(e))
-    if not result:
-        raise HTTPException(status_code=404, detail="Deployment not found")
-    instance_id = result[0]
-    repo_name = result[1].split("/")[-1]
-    port = result[2].split(":")[-1]
-    dir_name = repo_name + port
-    print(instance_id)
-    print(repo_name)
-    response = ssm.send_command(
-        InstanceIds=[instance_id],
-        DocumentName="AWS-RunShellScript",
-        Parameters={
-            "commands": [
-                f"cd /home/ec2-user/{dir_name}",
-                "tail -n 10 app.log"
-            ]
-        }
-    )
-    command_id = response["Command"]["CommandId"]
-    time2.sleep(3)
-    print("Command sent:", command_id)
-    output = ssm.get_command_invocation(
-        CommandId=command_id,
-        InstanceId=instance_id
-    )
-    print(output["StandardOutputContent"])
+    
     return {
-        "logs": output["StandardOutputContent"]
+        "logs": result[0]
     }
 
 
