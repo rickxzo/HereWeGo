@@ -606,6 +606,8 @@ async def list_deployments(
 @app.post("/api/send-logs")
 async def send_logs(request: Request):
     data = await request.json()
+    logs = "\n".join(data["logs"])
+    logger.info(f"Received logs for {data['url']}: {logs}")
     conn = connect_db()
     cursor = conn.cursor()
     cursor.execute(
@@ -618,11 +620,11 @@ async def send_logs(request: Request):
         ON CONFLICT (deployment_id)
         DO UPDATE SET logs = Logs.logs || '\n' || EXCLUDED.logs
         """,
-        (data["url"], "\n".join(data["logs"]))
+        (data["url"], logs)
     )
     conn.commit()
     conn.close()
-    logger.info(f"Received logs for {data['url']}: {data['logs']}")
+    #logger.info(f"Received logs for {data['url']}: {data['logs']}")
     return {"status": "logs received"}
 
 
