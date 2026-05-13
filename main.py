@@ -609,8 +609,16 @@ async def send_logs(request: Request):
     conn = connect_db()
     cursor = conn.cursor()
     cursor.execute(
-        "UPDATE Logs SET logs = COALESCE(logs, '') || '\n' || %s WHERE deployment_id = (SELECT id FROM Deployments WHERE link = %s)",
-        (data["logs"], data["url"])
+        """
+        INSERT INTO Logs (deployment_id, logs)
+        VALUES (
+            (SELECT id FROM Deployments WHERE link = %s),
+            %s
+        )
+        ON CONFLICT (deployment_id)
+        DO UPDATE SET logs = Logs.logs || '\n' || EXCLUDED.logs
+        """,
+        (data["url"], "\n".join(data["logs"]))
     )
     conn.commit()
     conn.close()
