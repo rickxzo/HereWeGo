@@ -376,48 +376,46 @@ async def deploy_repo(
         env_vars += f"export {name}={value}\n"
 
     script = f""" 
-    import os
-    import time
-    import requests
+# log_streamer.py
 
-    LOG_FILE = os.environ.get("LOG_FILE", "app.log")
+import os
+import time
+import requests
 
-    # Backend endpoint
-    BACKEND_URL = 'https://herewego-3kgp.onrender.com/api/send-logs'
+LOG_FILE = os.environ.get("LOG_FILE", "app.log")
 
-    APP_URL = 'http://{host}:{port}'
+BACKEND_URL = "https://herewego-3kgp.onrender.com/api/send-logs"
 
-    INTERVAL = 15
+APP_URL = f"http://{host}:{port}"
 
-    while not os.path.exists(LOG_FILE):
-        time.sleep(1)
+INTERVAL = 15
 
-    with open(LOG_FILE, "r") as f:
+while not os.path.exists(LOG_FILE):
+    time.sleep(1)
 
-        # Start reading only new logs
-        f.seek(0, 2)
+with open(LOG_FILE, "r") as f:
 
-        while True:
 
-            new_logs = f.readlines()
+    while True:
 
-            if new_logs:
+        new_logs = f.readlines()
 
-                try:
+        if new_logs:
 
-                    requests.post(
-                        BACKEND_URL,
-                        json={
-                            "url": APP_URL,
-                            "logs": new_logs
-                        },
-                        timeout=10
-                    )
+            try:
 
-                except Exception as e:
-                    logger.error("Failed to send logs:", e)
+                requests.post(
+                    BACKEND_URL,
+                    json={{
+                        "url": APP_URL,
+                        "logs": new_logs
+                    }},
+                    timeout=10
+                )
+            except Exception as e:
+                print("Failed to send logs:", e)
 
-            time.sleep(INTERVAL)
+        time.sleep(INTERVAL)
     """
     response = ssm.send_command(
         InstanceIds=[instance_id],
@@ -436,9 +434,9 @@ async def deploy_repo(
 
                 f"cd /home/ec2-user/{repo_name.split('/')[-1] + str(port)}",
 
-                f"echo '{script}' > log_sender.py",
-
                 "python3 -m venv venv",
+
+                f"cd /home/ec2-user/{repo_name.split('/')[-1] + str(port)} && venv/bin/pip install requests",
 
                 "source venv/bin/activate",
 
@@ -447,6 +445,8 @@ async def deploy_repo(
                 f"export PORT={port}",
 
                 env_vars,
+
+                f"echo '{script}' > log_streamer.py",
 
                 f"nohup sh -c 'source venv/bin/activate && {run}' > app.log 2>&1 & echo $! > app.pid\n",
 
