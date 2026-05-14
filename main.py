@@ -424,8 +424,7 @@ with open(LOG_FILE, "r") as f:
             "commands": [
                 "yum update -y",
                 "yum install -y git python3 python3-pip",
-                "pip install requests"
-
+                
                 "cd /home/ec2-user",
 
                 f"rm -rf {repo_name.split('/')[-1] + str(port)}",
