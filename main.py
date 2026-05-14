@@ -455,6 +455,7 @@ with open(LOG_FILE, "r") as f:
         }
     )
     command_id = response["Command"]["CommandId"]
+    time2.sleep(2)
     output = ssm.get_command_invocation(
         CommandId=command_id,
         InstanceId=instance_id
