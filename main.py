@@ -449,7 +449,7 @@ with open(LOG_FILE, "r") as f:
 
                 f"nohup sh -c 'source venv/bin/activate && {run}' > app.log 2>&1 & echo $! > app.pid\n",
 
-                "nohup sh -c 'source venv/bin/activate && python3 log_sender.py' > logger.log 2>&1 & echo $! > logger.pid"
+                "nohup sh -c 'source venv/bin/activate && python3 log_streamer.py' > logger.log 2>&1 & echo $! > logger.pid"
             ]
         }
     )
