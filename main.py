@@ -70,7 +70,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 @app.get("/", response_class=HTMLResponse)
 async def docs():
-    with open("demo.html", encoding="utf-8") as f:
+    with open("home.html", encoding="utf-8") as f:
         return f.read()
 
 
