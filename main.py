@@ -10,6 +10,8 @@ load_dotenv()
 from fastapi import FastAPI, Depends, HTTPException, Request, UploadFile, File
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.staticfiles import StaticFiles
+import urllib.parse
 from uuid import UUID
 
 import httpx
@@ -64,6 +66,7 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
     except:
         raise HTTPException(status_code=401, detail="Invalid token")
 
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 @app.get("/", response_class=HTMLResponse)
 async def docs():
@@ -136,15 +139,16 @@ async def github_callback(code: str):
 
     jwt_token = create_access_token({"user_id": str(user_id)})
 
-    return {
-        "token": jwt_token,
-        "user": {
-            "id": user_id,
-            "username": user_data["login"],
-            "avatar": user_data["avatar_url"]
-        }
-    }
+    frontend_url = "https://herewego-epkc.onrender.com"
 
+    params = urllib.parse.urlencode({
+        "token": jwt_token,
+        "id": user_id,
+        "username": user_data["login"],
+        "avatar": user_data["avatar_url"]
+    })
+
+    return RedirectResponse(f"{frontend_url}?{params}")
 
 
 @app.get("/api/me")
@@ -241,6 +245,26 @@ def create_repo(
         return {"repo_id": cursor.fetchone()[0]}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal server error (DB Insert for repo) {str(e)}")
+        
+
+@app.get("/api/delete-repo")
+def delete_repo(
+    repo_id: str,
+    user_id: str = Depends(get_current_user)
+):
+    try:
+        conn = connect_db()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM Secrets WHERE repo_id = %s", (repo_id,))
+        cursor.execute("DELETE FROM Deployments WHERE repo_id = %s", (repo_id,))
+        cursor.execute(
+            "DELETE FROM Repos WHERE id = %s",
+            (repo_id,)
+        )
+        conn.commit()
+        return {"status": "repo deleted"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Internal server error (DB Delete for repo) - " + str(e))
     
 
 @app.get("/api/repos")
@@ -249,13 +273,24 @@ def list_repos(user_id: str = Depends(get_current_user)):
         conn = connect_db()
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT * FROM Repos WHERE user_id = %s",
+            """
+            SELECT DISTINCT ON (R.id)
+                R.*,
+                D.status,
+                D.id AS deployment_id,
+                D.link
+            FROM Repos R
+            LEFT JOIN Deployments D
+                ON R.id = D.repo_id
+            WHERE R.user_id = %s
+            ORDER BY R.id, D.last_modified DESC
+            """,
             (user_id,)
         )
         projects = cursor.fetchall()
-        return [{"id": p[0], "name": p[2], "build_cmd": p[3], "run_cmd": p[4]} for p in projects]
+        return [{"id": p[0], "name": p[2], "build_cmd": p[3], "run_cmd": p[4], "status": p[5], "deploy_id": p[6], "link": p[7]} for p in projects]
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Internal server error (DB Query)")
+        raise HTTPException(status_code=500, detail=f"Internal server error (DB Query) - {str(e)}")
     
 
 @app.post('/api/add-secrets')
@@ -465,14 +500,15 @@ with open(LOG_FILE, "r") as f:
     cursor = conn.cursor()
     cursor.execute(
         "INSERT INTO Deployments (repo_id, instance_id, link, status) VALUES (%s, %s, %s, %s) RETURNING id",
-        (str(repo_id), instance_id, url, "deploy started")
+        (str(repo_id), instance_id, url, "running")
     )
+    deployment_id = cursor.fetchone()[0]
     conn.commit()
     conn.close()
     return {
         "status": "deploy started",
         "url": url,
-        "deployment_id": cursor.lastrowid
+        "deployment_id": deployment_id
     }
 
 
@@ -521,6 +557,9 @@ async def rollback(
     )
     conn = connect_db()
     cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE Slots SET occupied = false WHERE instance_id = %s AND port = %s", (instance_id, port)
+    )
     cursor.execute(
         "UPDATE Deployments SET status = %s WHERE id = %s",
         ("rolled back", deployment_id)
