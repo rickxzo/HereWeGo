@@ -589,7 +589,7 @@ async def send_logs(request: Request):
         """
         INSERT INTO Logs (deployment_id, logs)
         VALUES (
-            (SELECT id FROM Deployments WHERE link = %s),
+            (SELECT id FROM Deployments WHERE link = %s AND status='running'),
             %s
         )
         ON CONFLICT (deployment_id)
