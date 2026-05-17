@@ -355,13 +355,13 @@ async def deploy_repo(
     
     try:
         cursor.execute(
-            "SELECT name, build_cmd, run_cmd FROM Repos WHERE id = %s",
+            "SELECT name, build_cmd, run_cmd, domain FROM Repos WHERE id = %s",
             (str(repo_id),)
         )
         result = cursor.fetchone()
         if not result:
             raise HTTPException(status_code=404, detail="Repo not found")
-        repo_name, build, run = result
+        repo_name, build, run, domain = result
         conn.close()
     except Exception as e:
         raise HTTPException(status_code=500, detail="Internal server error (DB Query in deploy) - " + str(e))
@@ -494,20 +494,51 @@ with open(LOG_FILE, "r") as f:
         CommandId=command_id,
         InstanceId=instance_id
     )
-    print(output)
     url = f"http://{host}:{port}"
+    link = f"{domain}.herewego.website"
+    nginx_cmd = f"""
+server {{
+    listen 80;
+
+    server_name {link};
+
+    location / {{
+        proxy_pass {url};
+
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }}
+}}
+    """
+    response2 = ssm.send_command(
+        InstanceIds=["i-05b3ebdc12ad5cfd1"],
+        DocumentName="AWS-RunShellScript",
+        Parameters = {
+            "commands": [
+                f"cat > /etc/nginx/conf.d/{domain}.conf << 'EOF'\n{nginx_cmd}\nEOF",
+                "nginx -t",
+                "systemctl reload nginx"
+            ]
+        }
+    )
+    command_id = response["Command"]["CommandId"]
+    output = ssm.get_command_invocation(
+        CommandId=command_id,
+        InstanceId=instance_id
+    )
     conn = connect_db()
     cursor = conn.cursor()
     cursor.execute(
-        "INSERT INTO Deployments (repo_id, instance_id, link, status) VALUES (%s, %s, %s, %s) RETURNING id",
-        (str(repo_id), instance_id, url, "running")
+        "INSERT INTO Deployments (repo_id, instance_id, link, url, status) VALUES (%s, %s, %s, %s, %s) RETURNING id",
+        (str(repo_id), instance_id, url, link, "running")
     )
     deployment_id = cursor.fetchone()[0]
     conn.commit()
     conn.close()
     return {
         "status": "deploy started",
-        "url": url,
+        "url": link,
         "deployment_id": deployment_id
     }
 
