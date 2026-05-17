@@ -288,7 +288,7 @@ def list_repos(user_id: str = Depends(get_current_user)):
             (user_id,)
         )
         projects = cursor.fetchall()
-        return [{"id": p[0], "name": p[2], "build_cmd": p[3], "run_cmd": p[4], "status": p[5], "deploy_id": p[6], "link": p[7]} for p in projects]
+        return [{"id": p[0], "name": p[2], "build_cmd": p[3], "run_cmd": p[4], "status": p[6], "deploy_id": p[7], "link": p[8]} for p in projects]
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal server error (DB Query) - {str(e)}")
     
