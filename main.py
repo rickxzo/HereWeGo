@@ -623,7 +623,7 @@ def get_logs(
         raise HTTPException(status_code=500, detail="Internal server error (DB Query in get logs) - " + str(e))
     
     return {
-        "logs": result[0]
+        "logs": result[0] if result else "No logs yet."
     }
 
 
