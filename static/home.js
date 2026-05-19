@@ -663,62 +663,62 @@ const GithubLoginPage = {
 
           <!-- Form -->
           <div class="p-6 space-y-5">
-          
-             <div>
-              <label class="block text-sm text-zinc-400 mb-2">
-                Preferred domain name
-              </label>
 
-              <input
-                v-model="deploymentForm.domain"
-                type="text"
-                placeholder="npm install"
-                class="w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-4 py-3 outline-none focus:border-zinc-600 transition"
-              />
-            </div>
+                <div>
+                  <label class="block text-sm text-zinc-400 mb-2">
+                    Preferred domain name
+                  </label>
+              
+                  <input
+                    v-model="deploymentForm.domain"
+                    type="text"
+                    placeholder="<domain>.herewego.website"
+                    class="w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-4 py-3 outline-none focus:border-zinc-600 transition"
+                  />
+                </div>
+              
+                <div>
+                  <label class="block text-sm text-zinc-400 mb-2">
+                    Build Command
+                  </label>
+              
+                  <input
+                    v-model="deploymentForm.build"
+                    type="text"
+                    placeholder="npm install && npm run build"
+                    class="w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-4 py-3 outline-none focus:border-zinc-600 transition"
+                  />
+                </div>
+              
+                <div>
+                  <label class="block text-sm text-zinc-400 mb-2">
+                    Run Command
+                  </label>
+              
+                  <input
+                    v-model="deploymentForm.run"
+                    type="text"
+                    placeholder="npm start"
+                    class="w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-4 py-3 outline-none focus:border-zinc-600 transition"
+                  />
+                </div>
+              
+                <div>
+                  <label class="block text-sm text-zinc-400 mb-2">
+                    Environment Variables
+                  </label>
+              
+                  <textarea
+                    v-model="deploymentForm.env"
+                    rows="7"
+                    placeholder="SECRET1=ABC
+              SECRET2=BDF
+              DATABASE_URL=XYZ"
+                    class="w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-4 py-3 outline-none focus:border-zinc-600 transition resize-none"
+                  ></textarea>
+                </div>
 
-            <div>
-              <label class="block text-sm text-zinc-400 mb-2">
-                Build Command
-              </label>
-
-              <input
-                v-model="deploymentForm.build"
-                type="text"
-                placeholder="<domain>.herewego.website"
-                class="w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-4 py-3 outline-none focus:border-zinc-600 transition"
-              />
-            </div>
-
-            <div>
-              <label class="block text-sm text-zinc-400 mb-2">
-                Run Command
-              </label>
-
-              <input
-                v-model="deploymentForm.run"
-                type="text"
-                placeholder="npm start"
-                class="w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-4 py-3 outline-none focus:border-zinc-600 transition"
-              />
-            </div>
-
-            <div>
-              <label class="block text-sm text-zinc-400 mb-2">
-                Environment Variables
-              </label>
-
-              <textarea
-                v-model="deploymentForm.env"
-                rows="7"
-                placeholder="SECRET1=ABC
-SECRET2=BDF
-DATABASE_URL=XYZ"
-                class="w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-4 py-3 outline-none focus:border-zinc-600 transition resize-none"
-              ></textarea>
-            </div>
-
-            <div
+                <div
               v-if="deployError"
               class="bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-3 rounded-2xl text-sm"
             >
@@ -739,6 +739,8 @@ DATABASE_URL=XYZ"
             >
               {{ deployButtonText }}
             </button>
+              
+              </div>
 
           </div>
 
