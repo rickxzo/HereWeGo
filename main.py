@@ -421,7 +421,7 @@ import requests
 
 LOG_FILE = os.environ.get("LOG_FILE", "app.log")
 
-BACKEND_URL = "https://herewego-epkc.onrender.com/api/send-logs"
+BACKEND_URL = "https://herewego.website/api/send-logs"
 
 APP_URL = f"http://{host}:{port}"
 
