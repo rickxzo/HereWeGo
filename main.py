@@ -395,6 +395,7 @@ async def deploy_repo(
     slot = cursor.fetchone()
     if not slot:
         ec2_res = create_ec2()
+        sleep(2)
         instance_id = ec2_res["instance_id"]
         host = ec2_res["host"]
         port = 3000
@@ -513,7 +514,7 @@ server {{
 }}
     """
     response2 = ssm.send_command(
-        InstanceIds=["i-05b3ebdc12ad5cfd1"],
+        InstanceIds=["i-0053d531be504c4a1"],
         DocumentName="AWS-RunShellScript",
         Parameters = {
             "commands": [
