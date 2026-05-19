@@ -225,6 +225,7 @@ def create_repo(
     repo_name: str,
     build: str,
     run: str,
+    domain: str,
     user_id: str = Depends(get_current_user)
 ):
     try:
@@ -235,11 +236,11 @@ def create_repo(
         cursor = conn.cursor()
         cursor.execute(
             """
-            INSERT INTO Repos (user_id, name, build_cmd, run_cmd)
-            VALUES (%s, %s, %s, %s)
+            INSERT INTO Repos (user_id, name, build_cmd, run_cmd, domain)
+            VALUES (%s, %s, %s, %s, %s)
             RETURNING id
             """,
-            (user_id, repo_name, build, run)
+            (user_id, repo_name, build, run, domain)
         )
         conn.commit()
         return {"repo_id": cursor.fetchone()[0]}
@@ -567,15 +568,14 @@ async def rollback(
     repo_name = result[1].split("/")[-1]
     port = result[2].split(":")[-1]
     dir_name = repo_name + port
-    print(instance_id)
-    print(repo_name)
     response = ssm.send_command(
         InstanceIds=[instance_id],
         DocumentName="AWS-RunShellScript",
         Parameters={
             "commands": [
-                f"cd /home/ec2-user/{dir_name}",
-                "kill $(cat app.pid)"
+                f"kill $(cat /home/ec2-user/{dir_name}/app.pid)",
+                f"kill $(cat /home/ec2-user/{dir_name}/logger.pid)",
+                f"rm -r /home/ec2-user/{dir_name}",
             ]
         }
     )
