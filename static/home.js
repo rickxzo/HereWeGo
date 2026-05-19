@@ -663,6 +663,19 @@ const GithubLoginPage = {
 
           <!-- Form -->
           <div class="p-6 space-y-5">
+          
+             <div>
+              <label class="block text-sm text-zinc-400 mb-2">
+                Preferred domain name
+              </label>
+
+              <input
+                v-model="deploymentForm.domain"
+                type="text"
+                placeholder="npm install"
+                class="w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-4 py-3 outline-none focus:border-zinc-600 transition"
+              />
+            </div>
 
             <div>
               <label class="block text-sm text-zinc-400 mb-2">
@@ -672,7 +685,7 @@ const GithubLoginPage = {
               <input
                 v-model="deploymentForm.build"
                 type="text"
-                placeholder="npm install"
+                placeholder="<domain>.herewego.website"
                 class="w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-4 py-3 outline-none focus:border-zinc-600 transition"
               />
             </div>
@@ -752,7 +765,8 @@ DATABASE_URL=XYZ"
       deploymentForm: {
         build: "",
         run: "",
-        env: ""
+        env: "",
+        domain: ""
       },
 
       deployLoading: false,
@@ -892,7 +906,7 @@ DATABASE_URL=XYZ"
         const token = localStorage.getItem("token");
 
         const createResponse = await fetch(
-          `/api/create-repo?repo_name=${encodeURIComponent(this.selectedDeploymentRepo.full_name)}&build=${encodeURIComponent(this.deploymentForm.build)}&run=${encodeURIComponent(this.deploymentForm.run)}`,
+          `/api/create-repo?repo_name=${encodeURIComponent(this.selectedDeploymentRepo.full_name)}&build=${encodeURIComponent(this.deploymentForm.build)}&run=${encodeURIComponent(this.deploymentForm.run)}&domain=${encodeURIComponent(this.deploymentForm.domain)}`,
           {
             method: "GET",
             headers: {
