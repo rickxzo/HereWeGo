@@ -672,7 +672,7 @@ const GithubLoginPage = {
                   <input
                     v-model="deploymentForm.domain"
                     type="text"
-                    placeholder="<domain>.herewego.website"
+                    placeholder="my-app.herewego.website"
                     class="w-full bg-zinc-950 border border-zinc-800 rounded-2xl px-4 py-3 outline-none focus:border-zinc-600 transition"
                   />
                 </div>
