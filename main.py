@@ -464,9 +464,9 @@ with open(LOG_FILE, "r") as f:
                 
                 "cd /home/ec2-user",
 
-                f"rm -rf /home/ec2-user/{repo_name.split('/')[-1] + str(port)}",
+                f"rm -rf {repo_name.split('/')[-1] + str(port)}",
 
-                f"git clone {clone_url} /home/ec2-user/{repo_name.split('/')[-1] + str(port)} > /home/ec2-user/{repo_name.split('/')[-1] + str(port)}/app.log 2>&1",
+                f"git clone {clone_url} {repo_name.split('/')[-1] + str(port)}",
 
                 f"cd /home/ec2-user/{repo_name.split('/')[-1] + str(port)}",
 
