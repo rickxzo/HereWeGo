@@ -468,9 +468,9 @@ with open(LOG_FILE, "r") as f:
 
                 f"git clone {clone_url} {repo_name.split('/')[-1] + str(port)} >> {repo_name.split('/')[-1] + str(port)}.log 2>&1",
 
-                f"touch /{repo_name.split('/')[-1] + str(port)}/app.log",
+                f"mv {repo_name.split('/')[-1] + str(port)}.log {repo_name.split('/')[-1] + str(port)}/app.log"
 
-                f"cat {repo_name.split('/')[-1] + str(port)}.log >> /{repo_name.split('/')[-1] + str(port)}/app.log 2>&1",
+                #f"cat {repo_name.split('/')[-1] + str(port)}.log >> /{repo_name.split('/')[-1] + str(port)}/app.log 2>&1",
 
                 f"cd /home/ec2-user/{repo_name.split('/')[-1] + str(port)}",
 
@@ -480,7 +480,7 @@ with open(LOG_FILE, "r") as f:
 
                 "source venv/bin/activate",
 
-                f"{build} >> app.log 2>&1",
+                #f"{build} >> app.log 2>&1",
 
                 f"export PORT={port}",
 
