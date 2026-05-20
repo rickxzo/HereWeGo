@@ -459,14 +459,14 @@ with open(LOG_FILE, "r") as f:
         DocumentName="AWS-RunShellScript",
         Parameters = {
             "commands": [
-                "yum update -y",
-                "yum install -y git python3 python3-pip",
+                f"yum update -y > /home/ec2-user/{repo_name.split('/')[-1] + str(port)}.log 2>&1",
+                f"yum install -y git python3 python3-pip >> /home/ec2-user/{repo_name.split('/')[-1] + str(port)}.log 2>&1",
                 
                 "cd /home/ec2-user",
 
                 f"rm -rf {repo_name.split('/')[-1] + str(port)}",
 
-                f"git clone {clone_url} {repo_name.split('/')[-1] + str(port)} > {repo_name.split('/')[-1] + str(port)}.log 2>&1",
+                f"git clone {clone_url} {repo_name.split('/')[-1] + str(port)} >> {repo_name.split('/')[-1] + str(port)}.log 2>&1",
 
                 f"cat {repo_name.split('/')[-1] + str(port)}.log >> /{repo_name.split('/')[-1] + str(port)}/app.log 2>&1",
 
@@ -478,7 +478,7 @@ with open(LOG_FILE, "r") as f:
 
                 "source venv/bin/activate",
 
-                f"{build} > app.log 2>&1",
+                f"{build} >> app.log 2>&1",
 
                 f"export PORT={port}",
 
