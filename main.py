@@ -482,17 +482,17 @@ with open(LOG_FILE, "r") as f:
 
                 "source venv/bin/activate",
 
+                f"echo '{script}' > log_streamer.py",
+                
+                "nohup sh -c 'source venv/bin/activate && python3 log_streamer.py' > logger.log 2>&1 & echo $! > logger.pid",
+
                 f"{build} >> app.log 2>&1",
 
                 f"export PORT={port}",
 
                 env_vars,
 
-                f"echo '{script}' > log_streamer.py",
-
                 f"nohup sh -c 'source venv/bin/activate && {run}' >> app.log 2>&1 & echo $! > app.pid\n",
-
-                "nohup sh -c 'source venv/bin/activate && python3 log_streamer.py' > logger.log 2>&1 & echo $! > logger.pid"
             ]
         }
     )
