@@ -480,7 +480,7 @@ with open(LOG_FILE, "r") as f:
 
                 "source venv/bin/activate",
 
-                #f"{build} >> app.log 2>&1",
+                f"{build} >> app.log 2>&1",
 
                 f"export PORT={port}",
 
