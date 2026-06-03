@@ -139,7 +139,7 @@ async def github_callback(code: str):
 
     jwt_token = create_access_token({"user_id": str(user_id)})
 
-    frontend_url = "https://herewego-1.onrender.com"
+    frontend_url = "https://herewego-fv2-1.onrender.com/auth"
 
     params = urllib.parse.urlencode({
         "token": jwt_token,
