@@ -641,7 +641,7 @@ def get_logs(
     try:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT logs FROM Logs WHERE deployment_id = %s",
+            "SELECT logs FROM Logs WHERE deployment_id = %s ORDER BY created_at",
             (deployment_id,)
         )
         result = cursor.fetchone()
@@ -690,8 +690,6 @@ async def send_logs(request: Request):
             (SELECT id FROM Deployments WHERE link = %s AND status='running'),
             %s
         )
-        ON CONFLICT (deployment_id)
-        DO UPDATE SET logs = Logs.logs || '\n' || EXCLUDED.logs
         """,
         (data["url"], logs)
     )
