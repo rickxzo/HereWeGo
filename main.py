@@ -1,4 +1,3 @@
-import random
 import boto3
 ec2 = boto3.client("ec2", region_name="us-east-1")
 ssm = boto3.client("ssm")
@@ -7,7 +6,7 @@ from dotenv import load_dotenv
 import os
 load_dotenv()
 
-from fastapi import FastAPI, Depends, HTTPException, Request, UploadFile, File
+from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.staticfiles import StaticFiles
@@ -17,11 +16,10 @@ from uuid import UUID
 
 import httpx
 import psycopg2
-import subprocess
 import requests
 
 from jose import jwt
-from datetime import datetime, time, timedelta
+from datetime import datetime, timedelta
 import time as time2
 
 import logging
@@ -259,6 +257,7 @@ def create_repo(
             (user_id, repo_name, build, run, domain)
         )
         conn.commit()
+        conn.close()
         return {"repo_id": cursor.fetchone()[0]}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal server error (DB Insert for repo) {str(e)}")
@@ -279,6 +278,7 @@ def delete_repo(
             (repo_id,)
         )
         conn.commit()
+        conn.close()
         return {"status": "repo deleted"}
     except Exception as e:
         raise HTTPException(status_code=500, detail="Internal server error (DB Delete for repo) - " + str(e))
@@ -305,6 +305,7 @@ def list_repos(user_id: str = Depends(get_current_user)):
             (user_id,)
         )
         projects = cursor.fetchall()
+        conn.close()
         return [{"id": p[0], "name": p[2], "build_cmd": p[3], "run_cmd": p[4], "status": p[6], "deploy_id": p[7], "link": f"https://{p[5]}.herewego.website", "url": p[8]} for p in projects]
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal server error (DB Query) - {str(e)}")
@@ -342,6 +343,7 @@ async def add_secrets(
             cmd[:-1]
         )
         conn.commit()
+        conn.close()
         return {"status": "secret added"}
     except Exception as e:
         raise HTTPException(status_code=500, detail="Internal server error (DB Insert for secrets) - " + str(e))
@@ -583,6 +585,7 @@ async def rollback(
             (deployment_id,)
         )
         result = cursor.fetchone()
+        conn.close()
     except Exception as e:
         raise HTTPException(status_code=500, detail="Internal server error (DB Query in rollback) - " + str(e))
     if not result:
@@ -642,6 +645,7 @@ def get_logs(
             (deployment_id,)
         )
         result = cursor.fetchone()
+        conn.close()
     except Exception as e:
         raise HTTPException(status_code=500, detail="Internal server error (DB Query in get logs) - " + str(e))
     
@@ -666,6 +670,7 @@ async def list_deployments(
             (repo_id,)
         )
         deployments = cursor.fetchall()
+        conn.close()
     except Exception as e:
         raise HTTPException(status_code=500, detail="Internal server error (DB Query in list deployments) - " + str(e))
     return [{"id": d[0], "link": d[1], "status": d[2]} for d in deployments]
