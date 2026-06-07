@@ -215,7 +215,11 @@ def get_github_repos(user_id: str = Depends(get_current_user)):
     try:
         res = requests.get(
             "https://api.github.com/user/repos",
-            headers={"Authorization": f"Bearer {github_token}"}
+            headers={"Authorization": f"Bearer {github_token}"},
+            params={
+                "per_page": 100,
+                "page": 1
+            }
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail="Internal server error (GitHub API) - " + str(e))
