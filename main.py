@@ -548,6 +548,7 @@ async def rollback(
             "SELECT D.instance_id, R.name, D.link FROM Deployments D JOIN Repos R ON D.repo_id = R.id WHERE D.id = %s",
             (deployment_id,)
         )
+        # SELECT R.name, S.id, S.instance_id, S.port FROM Deployments D JOIN Slots S ON D.slot_id = S.id JOIN Repos R ON R.id = D.repo_id;
         result = cursor.fetchone()
         conn.close()
     except Exception as e:
@@ -564,7 +565,6 @@ async def rollback(
         Parameters={
             "commands": [
                 f"kill $(cat /home/ec2-user/{dir_name}/app.pid)",
-                f"kill $(cat /home/ec2-user/{dir_name}/logger.pid)",
                 f"rm -r /home/ec2-user/{dir_name}",
             ]
         }
@@ -603,6 +603,9 @@ def get_logs(
     cursor.execute(
         "SELECT R.name, D.instance_id, D.link FROM Repos R JOIN Deployments D ON R.id = D.repo_id WHERE D.id = %s", (deployment_id,)
     )
+    # SELECT R.name, S.instance_id, S.port FROM Deployments D JOIN Slots S ON D.slot_id = S.id JOIN Repos R ON D.repo_id = R.id
+
+    
     name, instance_id, link = cursor.fetchone()
     dir_name = name.split("/")[1] + link.split(":")[2]
     conn.close()
