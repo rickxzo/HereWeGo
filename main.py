@@ -19,7 +19,7 @@ import psycopg2
 import requests
 
 from jose import jwt
-from datetime import datetime, timedelta, time
+from datetime import datetime, timedelta
 import time as time2
 
 import logging
@@ -607,7 +607,7 @@ def get_logs(
     )
 
     command_id = response["Command"]["CommandId"]
-    time.sleep(2)
+    time2.sleep(2)
     result = ssm.get_command_invocation(
         CommandId=command_id,
         InstanceId=instance_id
