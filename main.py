@@ -605,8 +605,9 @@ def get_logs(
             ]
         }
     )
+
+    time.sleep(2)
     command_id = response["Command"]["CommandId"]
-        time.sleep(2)
         result = ssm.get_command_invocation(
         CommandId=command_id,
         InstanceId=instance_id
