@@ -777,11 +777,11 @@ async def list_functions(
 ):
     conn = connect_db()
     cursor = conn.cursor()
-    cursor.execute("SELECT url FROM Functions WHERE user_id = %s", (user_id,))
+    cursor.execute("SELECT name, url, code FROM Functions WHERE user_id = %s", (user_id,))
     functions = cursor.fetchall()
     conn.close()
     return [
-        {'url': url[0]} for url in functions 
+        {'name': function[0], 'url': function[1], 'code': function[2]} for function in functions 
     ]
 
 
@@ -869,7 +869,7 @@ async def create_function(
     conn = connect_db()
     cursor = conn.cursor()
     cursor.execute(
-        "INSERT INTO Functions VALUES (%s, %s, %s)", (user_id, arn, url)
+        "INSERT INTO Functions VALUES (%s, %s, %s, %s, %s)", (user_id, arn, url, name, code)
     )
     conn.commit()
     conn.close()
