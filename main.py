@@ -823,7 +823,7 @@ async def list_deployments(
         if state == "Failed":
             raise Exception("Lambda deployment failed")
 
-        time.sleep(2)
+        time2.sleep(2)
     try:
         url_response = lambda_client.create_function_url_config(
             FunctionName=arn,
