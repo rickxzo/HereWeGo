@@ -668,7 +668,7 @@ def get_logs(
     #name, instance_id, link = cursor.fetchone()
     name, instance_id, port = cursor.fetchone()
     #dir_name = name.split("/")[1] + link.split(":")[2]
-    dir_name = name.split("/")[1] + port
+    dir_name = name.split("/")[1] + str(port)
     conn.close()
     response = ssm.send_command(
         InstanceIds=[instance_id],
