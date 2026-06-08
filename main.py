@@ -329,9 +329,9 @@ def list_repos(user_id: str = Depends(get_current_user)):
         cursor.execute(
             """
             SELECT R.*, D.id, D.status, S.port, I.host 
-            FROM Repos R JOIN Deployments D ON R.id = D.repo_id 
-            JOIN Slots S ON D.slot_id = S.id 
-            JOIN Instances I ON S.instance_id = I.id
+            FROM Repos R LEFT JOIN Deployments D ON R.id = D.repo_id 
+            LEFT JOIN Slots S ON D.slot_id = S.id 
+            LEFT JOIN Instances I ON S.instance_id = I.id
             WHERE R.user_id = %s
             ORDER BY R.id, D.last_modified DESC
             """,
