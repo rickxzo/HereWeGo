@@ -634,23 +634,9 @@ def get_logs(
     deployment_id: str,
     user_id: str = Depends(get_current_user)
 ):
-    try:
-        conn = connect_db()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail="Internal server error (DB Connection in get logs)")
-    try:
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT logs FROM Logs WHERE deployment_id = %s ORDER BY created_at",
-            (deployment_id,)
-        )
-        result = cursor.fetchone()
-        conn.close()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail="Internal server error (DB Query in get logs) - " + str(e))
     
     return {
-        "logs": result[0] if result else "No logs yet."
+        "logs": "Logs feature is currently down."
     }
 
 
@@ -678,24 +664,6 @@ async def list_deployments(
 
 @app.post("/api/send-logs")
 async def send_logs(request: Request):
-    data = await request.json()
-    logs = "\n".join(data["logs"])
-    logger.info(f"Received logs for {data['url']}: {logs}")
-    conn = connect_db()
-    cursor = conn.cursor()
-    cursor.execute(
-        """
-        INSERT INTO Logs (deployment_id, logs)
-        VALUES (
-            (SELECT id FROM Deployments WHERE link = %s AND status='running'),
-            %s
-        )
-        """,
-        (data["url"], logs)
-    )
-    conn.commit()
-    conn.close()
-    #logger.info(f"Received logs for {data['url']}: {data['logs']}")
     return {"status": "logs received"}
 
 
