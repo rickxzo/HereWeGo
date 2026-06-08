@@ -1,6 +1,14 @@
 import boto3
 ec2 = boto3.client("ec2", region_name="us-east-1")
 ssm = boto3.client("ssm")
+import ast
+import io
+import zipfile
+
+ROLE_ARN = "arn:aws:iam::113831246595:role/HereWeGo-Lambda"
+REGION = "us-east-1"
+
+lambda_client = boto3.client("lambda", region_name=REGION)
 
 from dotenv import load_dotenv
 import os
@@ -760,3 +768,99 @@ def create_ec2():
         return {"instance_id": instance_id, "host": host}
     except Exception as e:
         raise HTTPException(status_code=500, detail="Internal server error (EC2 Creation) - " + str(e))
+
+
+
+@app.get("/api/create-function")
+async def list_deployments(
+    code: str,
+    name: str,
+    user_id: str = Depends(get_current_user)
+):
+    try:
+        tree = ast.parse(code)
+    except SyntaxError as e:
+        raise Exception(f"Syntax Error: {e}")
+
+    has_handler = any(
+        isinstance(node, ast.FunctionDef)
+        and node.name == "main"
+        for node in tree.body
+    )
+
+    if not has_handler:
+        raise Exception("lambda_handler function not found")
+
+    zip_buffer = io.BytesIO()
+
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("lambda.py", code)
+
+    zip_bytes = zip_buffer.getvalue()
+
+    response = lambda_client.create_function(
+        FunctionName=str(user_id)+name,
+        Runtime="python3.12",
+        Role=ROLE_ARN,
+        Handler="lambda.main",
+        Code={"ZipFile": zip_bytes},
+        Timeout=30,
+        MemorySize=128,
+        Publish=True,
+    )
+
+    arn = response["FunctionArn"]
+    while True:
+        config = lambda_client.get_function(
+            FunctionName=arn
+        )["Configuration"]
+
+        state = config["State"]
+
+        if state == "Active":
+            break
+
+        if state == "Failed":
+            raise Exception("Lambda deployment failed")
+
+        time.sleep(2)
+    try:
+        url_response = lambda_client.create_function_url_config(
+            FunctionName=arn,
+            AuthType="NONE"
+        )
+
+        url = url_response["FunctionUrl"]
+
+        lambda_client.add_permission(
+            FunctionName=arn,
+            StatementId="FunctionURLAllowPublicAccess",
+            Action="lambda:InvokeFunctionUrl",
+            Principal="*",
+            FunctionUrlAuthType="NONE"
+        )
+
+        lambda_client.add_permission(
+            FunctionName=arn,
+            StatementId="FunctionURLAllowPublicInvoke",
+            Action="lambda:InvokeFunction",
+            Principal="*"
+        )
+    except lambda_client.exceptions.ResourceConflictException:
+        url = lambda_client.get_function_url_config(
+            FunctionName=arn
+        )["FunctionUrl"]
+
+    conn = connect_db()
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO Functions VALUES (%s, %s, %s)", (user_id, arn, url)
+    )
+    conn.commit()
+    conn.close()
+    return {
+        "arn": arn,
+        "url": url
+    }
+    
+    
