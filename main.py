@@ -560,7 +560,7 @@ server {{
     cursor.execute(
         '''
         INSERT INTO Deployments (repo_id, status, slot_id) VALUES (%s, %s, %s) RETURNING id",
-        '''
+        ''',
         (str(repo_id), "running", slot_id)
     )
     deployment_id = cursor.fetchone()[0]
