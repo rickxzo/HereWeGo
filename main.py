@@ -257,8 +257,9 @@ def create_repo(
             (user_id, repo_name, build, run, domain)
         )
         conn.commit()
+        repo_id = cursor.fetchone()[0]
         conn.close()
-        return {"repo_id": cursor.fetchone()[0]}
+        return {"repo_id": repo_id}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal server error (DB Insert for repo) {str(e)}")
         
