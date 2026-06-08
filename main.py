@@ -19,7 +19,7 @@ import psycopg2
 import requests
 
 from jose import jwt
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time
 import time as time2
 
 import logging
@@ -588,10 +588,37 @@ def get_logs(
     deployment_id: str,
     user_id: str = Depends(get_current_user)
 ):
+    conn = connect_db()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT R.name, D.instance_id, D.link FROM Repos R JOIN Deployments D ON R.id = D.repo_id WHERE D.id = %s", (deployment_id,)
+    )
+    name, instance_id, link = cursor.fetchone()
+    dir_name = name.split("/")[1] + link.split(":")[1]
+    conn.close()
+    response = ssm.send_command(
+        InstanceIds=[instance_id],
+        DocumentName="AWS-RunShellScript",
+        Parameters={
+            "commands": [
+                f"cat /home/ec2-user/{dir_name}/app.log)",
+            ]
+        }
+    )
+    command_id = response["Command"]["CommandId"]
+        time.sleep(2)
+        result = ssm.get_command_invocation(
+        CommandId=command_id,
+        InstanceId=instance_id
+    )
+
+    stdout = result["StandardOutputContent"]
+    stderr = result["StandardErrorContent"]
     
     
     return {
-        "logs": "Logs feature is currently down."
+        "logs": stdout,
+        "errs": stderr
     }
 
 
