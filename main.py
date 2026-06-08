@@ -430,48 +430,6 @@ async def deploy_repo(
     for name, value in secrets:
         env_vars += f"export {name}={value}\n"
 
-    script = f""" 
-# log_streamer.py
-
-import os
-import time
-import requests
-
-LOG_FILE = os.environ.get("LOG_FILE", "app.log")
-
-BACKEND_URL = "https://herewego.herewego.website/api/send-logs"
-
-APP_URL = f"http://{host}:{port}"
-
-INTERVAL = 15
-
-while not os.path.exists(LOG_FILE):
-    time.sleep(1)
-
-with open(LOG_FILE, "r") as f:
-
-
-    while True:
-
-        new_logs = f.readlines()
-
-        if new_logs:
-
-            try:
-
-                requests.post(
-                    BACKEND_URL,
-                    json={{
-                        "url": APP_URL,
-                        "logs": new_logs
-                    }},
-                    timeout=10
-                )
-            except Exception as e:
-                print("Failed to send logs:", e)
-
-        time.sleep(INTERVAL)
-    """
     response = ssm.send_command(
         InstanceIds=[instance_id],
         DocumentName="AWS-RunShellScript",
@@ -499,10 +457,6 @@ with open(LOG_FILE, "r") as f:
                 f"cd /home/ec2-user/{repo_name.split('/')[-1] + str(port)} && venv/bin/pip install requests",
 
                 "source venv/bin/activate",
-
-                f"echo '{script}' > log_streamer.py",
-                
-                "nohup sh -c 'source venv/bin/activate && python3 log_streamer.py' > logger.log 2>&1 & echo $! > logger.pid",
 
                 f"{build} >> app.log 2>&1",
 
@@ -634,6 +588,7 @@ def get_logs(
     deployment_id: str,
     user_id: str = Depends(get_current_user)
 ):
+    
     
     return {
         "logs": "Logs feature is currently down."
