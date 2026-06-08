@@ -49,7 +49,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-def connect_db():
+def connect_db2():
     return psycopg2.connect(
         host="ep-soft-field-aoewhaic-pooler.c-2.ap-southeast-1.aws.neon.tech",
         dbname="neondb",
@@ -58,7 +58,7 @@ def connect_db():
         sslmode="require",
     )
 
-def connect_db2():
+def connect_db():
     return psycopg2.connect(
         host="ep-floral-king-apuib0ib-pooler.c-7.us-east-1.aws.neon.tech",
         dbname="neondb",
@@ -142,6 +142,7 @@ async def github_callback(code: str):
         )
 
     else:
+        '''
         cursor.execute(
             """
             INSERT INTO users (github_id, username, avatar, access_token)
@@ -149,6 +150,15 @@ async def github_callback(code: str):
             RETURNING id
             """,
             (user_data["id"], user_data["login"], user_data["avatar_url"], access_token)
+        )
+        '''
+        cursor.execute(
+            """
+            INSERT INTO users (github_id, access_token)
+            VALUES (%s, %s, %s, %s)
+            RETURNING id
+            """,
+            (user_data["id"], access_token)
         )
         user_id = cursor.fetchone()[0]
 
@@ -299,6 +309,7 @@ def list_repos(user_id: str = Depends(get_current_user)):
     try:
         conn = connect_db()
         cursor = conn.cursor()
+        '''
         cursor.execute(
             """
             SELECT DISTINCT ON (R.id)
@@ -314,9 +325,21 @@ def list_repos(user_id: str = Depends(get_current_user)):
             """,
             (user_id,)
         )
+        '''
+        cursor.execute(
+            """
+            SELECT R.*, D.id, D.status, S.port, I.host 
+            FROM Repos R JOIN Deployments D ON R.id = D.repo_id 
+            JOIN Slots S ON D.slot_id = S.id 
+            JOIN Instances I ON S.instance_id = I.id
+            WHERE R.user_id = %s
+            ORDER BY R.id, D.last_modified DESC
+            """,
+            (user_id,)
+        )
         projects = cursor.fetchall()
         conn.close()
-        return [{"id": p[0], "name": p[2], "build_cmd": p[3], "run_cmd": p[4], "status": p[6], "deploy_id": p[7], "link": f"https://{p[5]}.herewego.website", "url": p[8]} for p in projects]
+        return [{"id": p[0], "name": p[2], "build_cmd": p[3], "run_cmd": p[4], "status": p[7], "deploy_id": p[6], "link": f"https://{p[5]}.herewego.website", "url": f"http://{9}:{8}"} for p in projects]
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal server error (DB Query) - {str(e)}")
     
@@ -417,8 +440,17 @@ async def deploy_repo(
     
     conn = connect_db()
     cursor = conn.cursor()
+    '''
     cursor.execute(
         "SELECT S.instance_id, I.host, S.port FROM Slots S JOIN Instances I ON S.instance_id = I.id WHERE S.occupied = false ORDER BY S.created_at LIMIT 1"
+    )
+    '''
+    cursor.execute(
+        '''
+        SELECT I.id, I.host, S.port, S.id
+        FROM Slots S JOIN Instances I ON I.id = S.instance_id 
+        WHERE S.occupied = FALSE ORDER BY S.created_at LIMIT 1;
+        '''
     )
     slot = cursor.fetchone()
     if not slot:
@@ -428,10 +460,10 @@ async def deploy_repo(
         host = ec2_res["host"]
         port = 3000
     else:
-        instance_id, host, port = slot
+        instance_id, host, port, slot_id = slot
         cursor.execute(
-            "UPDATE Slots SET occupied = true WHERE instance_id = %s AND port = %s",
-            (instance_id, port)
+            "UPDATE Slots SET occupied = true WHERE id = %s",
+            (slot_id,)
         )
         conn.commit()
     conn.close()
@@ -519,9 +551,17 @@ server {{
     )
     conn = connect_db()
     cursor = conn.cursor()
+    '''
     cursor.execute(
         "INSERT INTO Deployments (repo_id, instance_id, link, url, status) VALUES (%s, %s, %s, %s, %s) RETURNING id",
         (str(repo_id), instance_id, url, link, "running")
+    )
+    '''
+    cursor.execute(
+        '''
+        INSERT INTO Deployments (repo_id, status, slot_id) VALUES (%s, %s, %s) RETURNING id",
+        '''
+        (str(repo_id), "running", slot_id)
     )
     deployment_id = cursor.fetchone()[0]
     conn.commit()
@@ -544,8 +584,14 @@ async def rollback(
         raise HTTPException(status_code=500, detail="Internal server error (DB Connection in rollback)")
     try:
         cursor = conn.cursor()
+        '''
         cursor.execute(
             "SELECT D.instance_id, R.name, D.link FROM Deployments D JOIN Repos R ON D.repo_id = R.id WHERE D.id = %s",
+            (deployment_id,)
+        )
+        '''
+        cursor.execute(
+            " SELECT S.instance_id, R.name, S.id, S.port FROM Deployments D JOIN Slots S ON D.slot_id = S.id JOIN Repos R ON R.id = D.repo_id WHERE D.id = %s",
             (deployment_id,)
         )
         # SELECT R.name, S.id, S.instance_id, S.port FROM Deployments D JOIN Slots S ON D.slot_id = S.id JOIN Repos R ON R.id = D.repo_id;
@@ -555,10 +601,18 @@ async def rollback(
         raise HTTPException(status_code=500, detail="Internal server error (DB Query in rollback) - " + str(e))
     if not result:
         raise HTTPException(status_code=404, detail="Deployment not found")
+    '''
     instance_id = result[0]
     repo_name = result[1].split("/")[-1]
     port = result[2].split(":")[-1]
     dir_name = repo_name + port
+    '''
+    instance_id = result[0]
+    repo_name = result[1].split("/")[-1]
+    port = result[3]
+    slot_id = result[2]
+    dir_name = repo_name + port 
+    
     response = ssm.send_command(
         InstanceIds=[instance_id],
         DocumentName="AWS-RunShellScript",
@@ -579,7 +633,7 @@ async def rollback(
     conn = connect_db()
     cursor = conn.cursor()
     cursor.execute(
-        "UPDATE Slots SET occupied = false WHERE instance_id = %s AND port = %s", (instance_id, port)
+        "UPDATE Slots SET occupied = false WHERE id=%s", (slot_id,)
     )
     cursor.execute(
         "UPDATE Deployments SET status = %s WHERE id = %s",
@@ -600,14 +654,21 @@ def get_logs(
 ):
     conn = connect_db()
     cursor = conn.cursor()
+    '''
     cursor.execute(
         "SELECT R.name, D.instance_id, D.link FROM Repos R JOIN Deployments D ON R.id = D.repo_id WHERE D.id = %s", (deployment_id,)
+    )
+    '''
+    cursor.execute(
+        "SELECT R.name, S.instance_id, S.port FROM Deployments D JOIN Slots S ON D.slot_id = S.id JOIN Repos R ON D.repo_id = R.id WHERE D.id = %s", (deployment_id,)
     )
     # SELECT R.name, S.instance_id, S.port FROM Deployments D JOIN Slots S ON D.slot_id = S.id JOIN Repos R ON D.repo_id = R.id
 
     
-    name, instance_id, link = cursor.fetchone()
-    dir_name = name.split("/")[1] + link.split(":")[2]
+    #name, instance_id, link = cursor.fetchone()
+    name, instance_id, port = cursor.fetchone()
+    #dir_name = name.split("/")[1] + link.split(":")[2]
+    dir_name = name.split("/")[1] + port
     conn.close()
     response = ssm.send_command(
         InstanceIds=[instance_id],
