@@ -594,14 +594,14 @@ def get_logs(
         "SELECT R.name, D.instance_id, D.link FROM Repos R JOIN Deployments D ON R.id = D.repo_id WHERE D.id = %s", (deployment_id,)
     )
     name, instance_id, link = cursor.fetchone()
-    dir_name = name.split("/")[1] + link.split(":")[1]
+    dir_name = name.split("/")[1] + link.split(":")[2]
     conn.close()
     response = ssm.send_command(
         InstanceIds=[instance_id],
         DocumentName="AWS-RunShellScript",
         Parameters={
             "commands": [
-                f"cat /home/ec2-user/{dir_name}/app.log)",
+                f"cat /home/ec2-user/{dir_name}/app.log",
             ]
         }
     )
