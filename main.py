@@ -771,8 +771,23 @@ def create_ec2():
 
 
 
+@app.get("/api/functions")
+async def list_functions(
+    user_id: str = Depends(get_current_user)
+):
+    conn = connect_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT url FROM Functions WHERE user_id = %s", (user_id,))
+    functions = cursor.fetchall()
+    conn.close()
+    return [
+        {'url': url[0]} for url in functions 
+    ]
+
+
+
 @app.get("/api/create-function")
-async def list_deployments(
+async def create_function(
     code: str,
     name: str,
     user_id: str = Depends(get_current_user)
