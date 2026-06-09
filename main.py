@@ -777,11 +777,11 @@ async def list_functions(
 ):
     conn = connect_db()
     cursor = conn.cursor()
-    cursor.execute("SELECT name, url, code FROM Functions WHERE user_id = %s", (user_id,))
+    cursor.execute("SELECT name, url, code, language FROM Functions WHERE user_id = %s", (user_id,))
     functions = cursor.fetchall()
     conn.close()
     return [
-        {'name': function[0], 'url': function[1], 'code': function[2]} for function in functions 
+        {'name': function[0], 'url': function[1], 'code': function[2], 'language': function[3]} for function in functions 
     ]
 
 
