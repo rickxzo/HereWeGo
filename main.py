@@ -793,19 +793,9 @@ async def create_function(
     language: str,
     user_id: str = Depends(get_current_user)
 ):
-    try:
-        tree = ast.parse(code)
-    except SyntaxError as e:
-        raise Exception(f"Syntax Error: {e}")
 
-    has_handler = any(
-        isinstance(node, ast.FunctionDef)
-        and node.name == "main"
-        for node in tree.body
-    )
-
-    if not has_handler:
-        raise Exception("lambda_handler function not found")
+    if "main" not in code:
+        return {"error": "function header main() has to be present."}
 
     langs = {
         "Python 3.10": {
