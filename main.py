@@ -884,7 +884,7 @@ async def create_function(
     
     }
 
-    details = langs['language']
+    details = langs[language]
     
     zip_buffer = io.BytesIO()
 
@@ -895,9 +895,9 @@ async def create_function(
 
     response = lambda_client.create_function(
         FunctionName=str(user_id)+name,
-        Runtime=details.runtime,
+        Runtime=details["runtime"],
         Role=ROLE_ARN,
-        Handler=details.handler,
+        Handler=details["handler"],
         Code={"ZipFile": zip_bytes},
         Timeout=30,
         MemorySize=128,
