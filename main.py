@@ -21,6 +21,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 import urllib.parse
 from uuid import UUID
+from routes import function
 
 import httpx
 import psycopg2
@@ -45,6 +46,7 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_DAYS = 7
 
 app = FastAPI()
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -100,6 +102,7 @@ async def docs():
     with open("home.html", encoding="utf-8") as f:
         return f.read()
 
+app.include_router(function.router)
 
 @app.get("/login/github")
 def login_github():
