@@ -1,7 +1,10 @@
+import os
+from dotenv import load_dotenv
 from jose import jwt
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 security = HTTPBearer()
+load_dotenv()
  
 ALGORITHM = "HS256"
 JWT_SECRET = os.getenv("JWT_SECRET")
