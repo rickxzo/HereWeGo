@@ -770,7 +770,7 @@ def create_ec2():
         raise HTTPException(status_code=500, detail="Internal server error (EC2 Creation) - " + str(e))
 
 
-
+'''
 @app.get("/api/functions")
 async def list_functions(
     user_id: str = Depends(get_current_user)
@@ -783,7 +783,7 @@ async def list_functions(
     return [
         {'name': function[0], 'url': function[1], 'code': function[2], 'language': function[3]} for function in functions 
     ]
-
+'''
 
 
 @app.get("/api/create-function")
