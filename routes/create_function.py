@@ -1,5 +1,17 @@
+from fastapi import APIRouter, Depends
+from auth import get_current_user
+from db import connect_db
+import io
+import boto3
+import zipfile
+import time
+lambda_client = boto3.client("lambda", region_name="us-east-1")
+ROLE_ARN = "arn:aws:iam::113831246595:role/HereWeGo-Lambda"
 
-@app.get("/api/create-function")
+router = APIRouter()
+
+
+@router.get("/api/create-function")
 async def create_function(
     code: str,
     name: str,
@@ -121,7 +133,7 @@ async def create_function(
         if state == "Failed":
             raise Exception("Lambda deployment failed")
 
-        time2.sleep(2)
+        time.sleep(2)
     try:
         url_response = lambda_client.create_function_url_config(
             FunctionName=arn,
