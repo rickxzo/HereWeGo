@@ -102,7 +102,7 @@ async def docs():
     with open("home.html", encoding="utf-8") as f:
         return f.read()
 
-app.include_router(function.router)
+app.include_router(functions.router)
 app.include_router(create_function.router)
 
 @app.get("/login/github")
