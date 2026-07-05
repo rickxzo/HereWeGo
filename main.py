@@ -21,7 +21,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 import urllib.parse
 from uuid import UUID
-from routes import function
+from routes import functions, create_function
 
 import httpx
 import psycopg2
@@ -103,6 +103,7 @@ async def docs():
         return f.read()
 
 app.include_router(function.router)
+app.include_router(create_function.router)
 
 @app.get("/login/github")
 def login_github():
@@ -786,7 +787,6 @@ async def list_functions(
     return [
         {'name': function[0], 'url': function[1], 'code': function[2], 'language': function[3]} for function in functions 
     ]
-'''
 
 
 @app.get("/api/create-function")
@@ -950,5 +950,5 @@ async def create_function(
         "arn": arn,
         "url": url
     }
-    
+'''
     
