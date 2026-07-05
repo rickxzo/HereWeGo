@@ -21,7 +21,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 import urllib.parse
 from uuid import UUID
-from routes import functions, create_function, deployments
+from routes import functions, create_function, deployments, github_repos, repos, create_repo, delete_repo
 
 import httpx
 import psycopg2
@@ -105,6 +105,10 @@ async def docs():
 app.include_router(functions.router)
 app.include_router(create_function.router)
 app.include_router(deployments.router)
+app.include_router(repos.router)
+app.include_router(create_repo.router)
+app.include_router(delete_repo.router)
+app.include_router(github_repos.router)
 
 @app.get("/login/github")
 def login_github():
@@ -217,6 +221,7 @@ def get_me(user_id: str = Depends(get_current_user)):
     }
 
 
+'''
 @app.get("/api/github-repos")
 def get_github_repos(user_id: str = Depends(get_current_user)):
     try:
@@ -263,7 +268,6 @@ def get_github_repos(user_id: str = Depends(get_current_user)):
         for repo in res.json()
     ]
     return repos
-
 
 
 @app.get("/api/create-repo")
@@ -355,7 +359,8 @@ def list_repos(user_id: str = Depends(get_current_user)):
         return [{"id": p[0], "name": p[2], "build_cmd": p[3], "run_cmd": p[4], "status": p[7], "deploy_id": p[6], "link": f"https://{p[5]}.herewego.website", "url": f"http://{9}:{8}"} for p in projects]
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal server error (DB Query) - {str(e)}")
-    
+'''
+
 
 @app.post('/api/add-secrets')
 async def add_secrets(
