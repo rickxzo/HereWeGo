@@ -21,7 +21,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 import urllib.parse
 from uuid import UUID
-from routes import functions, create_function
+from routes import functions, create_function, deployments
 
 import httpx
 import psycopg2
@@ -104,6 +104,7 @@ async def docs():
 
 app.include_router(functions.router)
 app.include_router(create_function.router)
+app.include_router(deployments.router)
 
 @app.get("/login/github")
 def login_github():
@@ -709,6 +710,7 @@ def get_logs(
     }
 
 
+'''
 @app.get("/api/deployments")
 async def list_deployments(
     repo_id: str,
@@ -729,7 +731,7 @@ async def list_deployments(
     except Exception as e:
         raise HTTPException(status_code=500, detail="Internal server error (DB Query in list deployments) - " + str(e))
     return [{"id": d[0], "link": d[1], "status": d[2]} for d in deployments]
-
+'''
 
 @app.post("/api/send-logs")
 async def send_logs(request: Request):
