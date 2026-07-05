@@ -197,30 +197,6 @@ async def github_callback(code: str):
     return RedirectResponse(f"{frontend_url}?{params}")
 
 
-@app.get("/api/me")
-def get_me(user_id: str = Depends(get_current_user)):
-    conn = connect_db()
-    cursor = conn.cursor()
-
-    cursor.execute(
-        "SELECT username, avatar FROM users WHERE id = %s",
-        (user_id,)
-    )
-    user = cursor.fetchone()
-
-    cursor.close()
-    conn.close()
-
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    return {
-        "user_id": user_id,
-        "username": user[0],
-        "avatar": user[1]
-    }
-
-
 '''
 @app.get("/api/github-repos")
 def get_github_repos(user_id: str = Depends(get_current_user)):
@@ -326,23 +302,6 @@ def list_repos(user_id: str = Depends(get_current_user)):
     try:
         conn = connect_db()
         cursor = conn.cursor()
-        '''
-        cursor.execute(
-            """
-            SELECT DISTINCT ON (R.id)
-                R.*,
-                D.status,
-                D.id AS deployment_id,
-                D.link
-            FROM Repos R
-            LEFT JOIN Deployments D
-                ON R.id = D.repo_id
-            WHERE R.user_id = %s
-            ORDER BY R.id, D.last_modified DESC
-            """,
-            (user_id,)
-        )
-        '''
         cursor.execute(
             """
             SELECT R.*, D.id, D.status, S.port, I.host 
@@ -738,9 +697,6 @@ async def list_deployments(
     return [{"id": d[0], "link": d[1], "status": d[2]} for d in deployments]
 '''
 
-@app.post("/api/send-logs")
-async def send_logs(request: Request):
-    return {"status": "logs received"}
 
 
 @app.get("/api/create-ec2")
