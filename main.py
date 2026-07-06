@@ -510,11 +510,6 @@ def get_logs(
 ):
     conn = connect_db()
     cursor = conn.cursor()
-    '''
-    cursor.execute(
-        "SELECT R.name, D.instance_id, D.link FROM Repos R JOIN Deployments D ON R.id = D.repo_id WHERE D.id = %s", (deployment_id,)
-    )
-    '''
     cursor.execute(
         "SELECT R.name, S.instance_id, S.port FROM Deployments D JOIN Slots S ON D.slot_id = S.id JOIN Repos R ON D.repo_id = R.id WHERE D.id = %s", (deployment_id,)
     )
