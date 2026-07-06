@@ -12,46 +12,71 @@ def get_logs(
     deployment_id: str,
     user_id: str = Depends(get_current_user)
 ):
-    conn = connect_db()
-    cursor = conn.cursor()
-    '''
-    cursor.execute(
-        "SELECT R.name, D.instance_id, D.link FROM Repos R JOIN Deployments D ON R.id = D.repo_id WHERE D.id = %s", (deployment_id,)
-    )
-    '''
-    cursor.execute(
-        "SELECT R.name, S.instance_id, S.port FROM Deployments D JOIN Slots S ON D.slot_id = S.id JOIN Repos R ON D.repo_id = R.id WHERE D.id = %s", (deployment_id,)
-    )
-    # SELECT R.name, S.instance_id, S.port FROM Deployments D JOIN Slots S ON D.slot_id = S.id JOIN Repos R ON D.repo_id = R.id
-
+    try:
+        conn = None
+        conn = connect_db()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT R.name, S.instance_id, S.port FROM Deployments D JOIN Slots S ON D.slot_id = S.id JOIN Repos R ON D.repo_id = R.id WHERE D.id = %s AND R.user_id = %s", (deployment_id, user_id)
+        )
+        row = cursor.fetchone()
+        conn.close()
+        if row is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Deployment not found"
+            )
+        name, instance_id, port = row
+        dir_name = name.split("/")[1] + str(port)
+        response = ssm.send_command(
+            InstanceIds=[instance_id],
+            DocumentName="AWS-RunShellScript",
+            Parameters={
+                "commands": [
+                    f"tail -n 100 /home/ec2-user/{dir_name}/app.log",
+                ]
+            }
+        )
     
-    #name, instance_id, link = cursor.fetchone()
-    name, instance_id, port = cursor.fetchone()
-    #dir_name = name.split("/")[1] + link.split(":")[2]
-    dir_name = name.split("/")[1] + str(port)
-    conn.close()
-    response = ssm.send_command(
-        InstanceIds=[instance_id],
-        DocumentName="AWS-RunShellScript",
-        Parameters={
-            "commands": [
-                f"cat /home/ec2-user/{dir_name}/app.log",
-            ]
+        command_id = response["Command"]["CommandId"]
+        for _ in range(20):
+            result = ssm.get_command_invocation(
+            CommandId=command_id,
+            InstanceId=instance_id
+        )
+        
+            if result["Status"] in ("Success","Failed","Cancelled","TimedOut"):
+                break
+        
+            time.sleep(0.5)
+        else:
+            raise HTTPException(
+                status_code=504,
+                detail="Timed out waiting for logs."
+            )
+
+        if result["Status"] != "Success":
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to retrieve logs."
+            )
+    
+        stdout = result["StandardOutputContent"]
+        stderr = result["StandardErrorContent"]
+        
+        
+        return {
+            "logs": stdout,
+            "errs": stderr
         }
-    )
-
-    command_id = response["Command"]["CommandId"]
-    time.sleep(2)
-    result = ssm.get_command_invocation(
-        CommandId=command_id,
-        InstanceId=instance_id
-    )
-
-    stdout = result["StandardOutputContent"]
-    stderr = result["StandardErrorContent"]
+    except HTTPException:
+        raise
     
-    
-    return {
-        "logs": stdout,
-        "errs": stderr
-    }
+    except Exception:
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to retrieve logs."
+        )
+    finally: 
+        if conn:
+            conn.close()
