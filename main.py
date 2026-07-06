@@ -110,6 +110,7 @@ app.include_router(create_repo.router)
 app.include_router(delete_repo.router)
 app.include_router(github_repos.router)
 app.include_router(logs.router)
+app.include_router(add_secrets.router)
 
 @app.get("/login/github")
 def login_github():
