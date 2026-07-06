@@ -77,6 +77,3 @@ def get_logs(
             status_code=500,
             detail="Unable to retrieve logs."
         )
-    finally: 
-        if conn:
-            conn.close()
