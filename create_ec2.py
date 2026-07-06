@@ -1,5 +1,7 @@
 import boto3
+import time
 ec2 = boto3.client("ec2", region_name="us-east-1")
+ssm = boto3.client("ssm")
 from db import connect_db
 from fastapi import HTTPException
 
@@ -21,6 +23,32 @@ def create_ec2():
         ec2.get_waiter('instance_running').wait(
             InstanceIds=[instance_id]
         )
+        timeout = 180
+        elapsed = 0
+        
+        while elapsed < timeout:
+            response = ssm.describe_instance_information(
+                Filters=[
+                    {
+                        "Key": "InstanceIds",
+                        "Values": [instance_id]
+                    }
+                ]
+            )
+        
+            if response["InstanceInformationList"]:
+                info = response["InstanceInformationList"][0]
+        
+                if info["PingStatus"] == "Online":
+                    break
+        
+            time.sleep(5)
+            elapsed += 5
+        else:
+            raise HTTPException(
+                status_code=500,
+                detail="SSM never became ready."
+            )
         desc = ec2.describe_instances(InstanceIds=[instance_id])
         host = desc["Reservations"][0]["Instances"][0]["PublicIpAddress"]
         conn = connect_db()
