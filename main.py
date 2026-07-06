@@ -21,7 +21,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 import urllib.parse
 from uuid import UUID
-from routes import functions, create_function, deployments, github_repos, repos, create_repo, delete_repo
+from routes import functions, create_function, deployments, github_repos, repos, create_repo, delete_repo, logs, add_secrets
 
 import httpx
 import psycopg2
@@ -109,6 +109,7 @@ app.include_router(repos.router)
 app.include_router(create_repo.router)
 app.include_router(delete_repo.router)
 app.include_router(github_repos.router)
+app.include_router(logs.router)
 
 @app.get("/login/github")
 def login_github():
@@ -197,7 +198,7 @@ async def github_callback(code: str):
     return RedirectResponse(f"{frontend_url}?{params}")
 
 
-
+'''
 @app.post('/api/add-secrets')
 async def add_secrets(
     repo_id: UUID,
@@ -234,7 +235,7 @@ async def add_secrets(
         return {"status": "secret added"}
     except Exception as e:
         raise HTTPException(status_code=500, detail="Internal server error (DB Insert for secrets) - " + str(e))
-    
+'''
 
 @app.get("/api/deploy")
 async def deploy_repo(
@@ -500,7 +501,7 @@ async def rollback(
         "output": output
     }
 
-
+'''
 @app.get("/api/logs")
 def get_logs(
     deployment_id: str,
@@ -549,7 +550,7 @@ def get_logs(
         "logs": stdout,
         "errs": stderr
     }
-
+'''
 
 
 @app.get("/api/create-ec2")
