@@ -1,15 +1,3 @@
-import boto3
-ec2 = boto3.client("ec2", region_name="us-east-1")
-ssm = boto3.client("ssm")
-import ast
-import io
-import zipfile
-
-ROLE_ARN = "arn:aws:iam::113831246595:role/HereWeGo-Lambda"
-REGION = "us-east-1"
-
-lambda_client = boto3.client("lambda", region_name=REGION)
-
 from dotenv import load_dotenv
 import os
 load_dotenv()
@@ -20,18 +8,13 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 import urllib.parse
-from uuid import UUID
-from routes import functions, create_function, deployments, github_repos, repos, create_repo, delete_repo, logs, add_secrets, deploy, rollback
-
 import httpx
-import psycopg2
-import requests
-
 from jose import jwt
 from datetime import datetime, timedelta
-import time as time2
-
+from db import connect_db
 import logging
+
+from routes import functions, create_function, deployments, github_repos, repos, create_repo, delete_repo, logs, add_secrets, deploy, rollback
 
 logging.basicConfig(level=logging.INFO)
 
@@ -59,23 +42,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-def connect_db2():
-    return psycopg2.connect(
-        host="ep-soft-field-aoewhaic-pooler.c-2.ap-southeast-1.aws.neon.tech",
-        dbname="neondb",
-        user="neondb_owner",
-        password=os.getenv('NEONDB_PASS'),
-        sslmode="require",
-    )
-
-def connect_db():
-    return psycopg2.connect(
-        host="ep-floral-king-apuib0ib-pooler.c-7.us-east-1.aws.neon.tech",
-        dbname="neondb",
-        user="neondb_owner",
-        password=os.getenv('NEONDB_PASS2'),
-        sslmode="require",
-    )
 
 
 def create_access_token(data: dict):
@@ -96,11 +62,6 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
         raise HTTPException(status_code=401, detail="Invalid token")
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
-
-@app.get("/", response_class=HTMLResponse)
-async def docs():
-    with open("home.html", encoding="utf-8") as f:
-        return f.read()
 
 app.include_router(functions.router)
 app.include_router(create_function.router)
