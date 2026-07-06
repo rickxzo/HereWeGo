@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from auth import get_current_user
 from db import connect_db
 import io
 import boto3
+from botocore.exceptions import ClientError
 import zipfile
 import time
 lambda_client = boto3.client("lambda", region_name="us-east-1")
@@ -12,15 +13,17 @@ router = APIRouter()
 
 
 @router.get("/api/create-function")
-async def create_function(
+def create_function(
     code: str,
     name: str,
     language: str,
     user_id: str = Depends(get_current_user)
 ):
-
     if "main" not in code:
-        return {"error": "function header main() has to be present."}
+        raise HTTPException(
+            status_code=400,
+            detail="Function header main() has to be present."
+        )
 
     langs = {
         "Python 3.10": {
@@ -108,19 +111,28 @@ async def create_function(
 
     zip_bytes = zip_buffer.getvalue()
 
-    response = lambda_client.create_function(
-        FunctionName=str(user_id)+name,
-        Runtime=details["runtime"],
-        Role=ROLE_ARN,
-        Handler=details["handler"],
-        Code={"ZipFile": zip_bytes},
-        Timeout=30,
-        MemorySize=128,
-        Publish=True,
-    )
+    try:
+        response = lambda_client.create_function(
+            FunctionName=str(user_id)+name,
+            Runtime=details["runtime"],
+            Role=ROLE_ARN,
+            Handler=details["handler"],
+            Code={"ZipFile": zip_bytes},
+            Timeout=30,
+            MemorySize=128,
+            Publish=True,
+        )
+    
+        arn = response["FunctionArn"]
+    except ClientError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=e.response["Error"]["Message"]
+        )
+        
+    deadline = time.time() + 120
 
-    arn = response["FunctionArn"]
-    while True:
+    while time.time() < deadline:
         config = lambda_client.get_function(
             FunctionName=arn
         )["Configuration"]
@@ -131,9 +143,20 @@ async def create_function(
             break
 
         if state == "Failed":
-            raise Exception("Lambda deployment failed")
+            lambda_client.delete_function(FunctionName=arn)
+            raise HTTPException(
+                status_code=500,
+                detail="Lambda deployment failed."
+            )
 
-        time.sleep(2)
+        time.sleep(1)
+    else:
+        lambda_client.delete_function(FunctionName=arn)
+        raise HTTPException(
+            status_code=504,
+            detail="Lambda activation timed out."
+        )
+    
     try:
         url_response = lambda_client.create_function_url_config(
             FunctionName=arn,
@@ -155,20 +178,33 @@ async def create_function(
             StatementId="FunctionURLAllowPublicInvoke",
             Action="lambda:InvokeFunction",
             Principal="*"
-        )
+        )  
     except lambda_client.exceptions.ResourceConflictException:
         url = lambda_client.get_function_url_config(
             FunctionName=arn
         )["FunctionUrl"]
-
-    conn = connect_db()
-    cursor = conn.cursor()
-    cursor.execute(
-        "INSERT INTO Functions VALUES (%s, %s, %s, %s, %s, %s)", (user_id, arn, url, name, code, language)
-    )
-    conn.commit()
-    conn.close()
-    return {
-        "arn": arn,
-        "url": url
-    }
+    except ClientError:
+        lambda_client.delete_function(FunctionName=arn)
+        raise
+    
+    conn = None
+    cursor = None
+    try:
+        conn = connect_db()
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO Functions VALUES (%s, %s, %s, %s, %s, %s)", (user_id, arn, url, name, code, language)
+        )
+        conn.commit()
+        return {
+            "arn": arn,
+            "url": url
+        }
+    except Exception as e:
+        lambda_client.delete_function(FunctionName=arn)
+        raise HTTPException(status_code=500, detail="DB Update error")
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
