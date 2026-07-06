@@ -428,7 +428,7 @@ server {{
         "deployment_id": deployment_id
     }
 
-
+'''
 @app.get("/api/rollback")
 async def rollback(
     deployment_id: str,
@@ -440,12 +440,6 @@ async def rollback(
         raise HTTPException(status_code=500, detail="Internal server error (DB Connection in rollback)")
     try:
         cursor = conn.cursor()
-        '''
-        cursor.execute(
-            "SELECT D.instance_id, R.name, D.link FROM Deployments D JOIN Repos R ON D.repo_id = R.id WHERE D.id = %s",
-            (deployment_id,)
-        )
-        '''
         cursor.execute(
             " SELECT S.instance_id, R.name, S.id, S.port FROM Deployments D JOIN Slots S ON D.slot_id = S.id JOIN Repos R ON R.id = D.repo_id WHERE D.id = %s",
             (deployment_id,)
@@ -457,12 +451,7 @@ async def rollback(
         raise HTTPException(status_code=500, detail="Internal server error (DB Query in rollback) - " + str(e))
     if not result:
         raise HTTPException(status_code=404, detail="Deployment not found")
-    '''
-    instance_id = result[0]
-    repo_name = result[1].split("/")[-1]
-    port = result[2].split(":")[-1]
-    dir_name = repo_name + port
-    '''
+        
     instance_id = result[0]
     repo_name = result[1].split("/")[-1]
     port = result[3]
@@ -502,7 +491,6 @@ async def rollback(
         "output": output
     }
 
-'''
 @app.get("/api/logs")
 def get_logs(
     deployment_id: str,
