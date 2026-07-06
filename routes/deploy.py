@@ -35,8 +35,8 @@ async def deploy_repo(
     
     try:
         cursor.execute(
-            "SELECT name, build_cmd, run_cmd, domain FROM Repos WHERE id = %s",
-            (str(repo_id),)
+            "SELECT name, build_cmd, run_cmd, domain FROM Repos WHERE id = %s AND user_id = %s",
+            (str(repo_id), user_id)
         )
         result = cursor.fetchone()
         if not result:
@@ -68,24 +68,21 @@ async def deploy_repo(
     
     conn = connect_db()
     cursor = conn.cursor()
-    '''
-    cursor.execute(
-        "SELECT S.instance_id, I.host, S.port FROM Slots S JOIN Instances I ON S.instance_id = I.id WHERE S.occupied = false ORDER BY S.created_at LIMIT 1"
-    )
-    '''
     cursor.execute(
         '''
         SELECT I.id, I.host, S.port, S.id
         FROM Slots S JOIN Instances I ON I.id = S.instance_id 
-        WHERE S.occupied = FALSE ORDER BY S.created_at LIMIT 1;
+        WHERE S.occupied = FALSE
+        FOR UPDATE SKIP LOCKED
+        ORDER BY S.created_at LIMIT 1;
         '''
     )
     slot = cursor.fetchone()
     if not slot:
         ec2_res = create_ec2()
-        time.sleep(2)
         instance_id = ec2_res["instance_id"]
         host = ec2_res["host"]
+        slot_id = ec2_res["slot_id"]
         port = 3000
     else:
         instance_id, host, port, slot_id = slot
@@ -117,8 +114,6 @@ async def deploy_repo(
                 f"mv {repo_name.split('/')[-1] + str(port)}.log {repo_name.split('/')[-1] + str(port)}/",
 
                 f"cat {repo_name.split('/')[-1] + str(port)}/{repo_name.split('/')[-1] + str(port)}.log > {repo_name.split('/')[-1] + str(port)}/app.log",
-
-                #f"cat {repo_name.split('/')[-1] + str(port)}.log >> /{repo_name.split('/')[-1] + str(port)}/app.log 2>&1",
 
                 f"cd /home/ec2-user/{repo_name.split('/')[-1] + str(port)}",
 
