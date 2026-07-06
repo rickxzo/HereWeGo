@@ -21,7 +21,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 import urllib.parse
 from uuid import UUID
-from routes import functions, create_function, deployments, github_repos, repos, create_repo, delete_repo, logs, add_secrets
+from routes import functions, create_function, deployments, github_repos, repos, create_repo, delete_repo, logs, add_secrets, deploy, rollback
 
 import httpx
 import psycopg2
@@ -111,6 +111,8 @@ app.include_router(delete_repo.router)
 app.include_router(github_repos.router)
 app.include_router(logs.router)
 app.include_router(add_secrets.router)
+app.include_router(deploy.router)
+app.include_router(rollback.router)
 
 @app.get("/login/github")
 def login_github():
@@ -236,7 +238,7 @@ async def add_secrets(
         return {"status": "secret added"}
     except Exception as e:
         raise HTTPException(status_code=500, detail="Internal server error (DB Insert for secrets) - " + str(e))
-'''
+
 
 @app.get("/api/deploy")
 async def deploy_repo(
@@ -296,17 +298,8 @@ async def deploy_repo(
     
     conn = connect_db()
     cursor = conn.cursor()
-    '''
     cursor.execute(
-        "SELECT S.instance_id, I.host, S.port FROM Slots S JOIN Instances I ON S.instance_id = I.id WHERE S.occupied = false ORDER BY S.created_at LIMIT 1"
-    )
-    '''
-    cursor.execute(
-        '''
-        SELECT I.id, I.host, S.port, S.id
-        FROM Slots S JOIN Instances I ON I.id = S.instance_id 
-        WHERE S.occupied = FALSE ORDER BY S.created_at LIMIT 1;
-        '''
+        "SELECT I.id, I.host, S.port, S.id FROM Slots S JOIN Instances I ON I.id = S.instance_id WHERE S.occupied = FALSE ORDER BY S.created_at LIMIT 1;"
     )
     slot = cursor.fetchone()
     if not slot:
@@ -407,16 +400,8 @@ server {{
     )
     conn = connect_db()
     cursor = conn.cursor()
-    '''
     cursor.execute(
-        "INSERT INTO Deployments (repo_id, instance_id, link, url, status) VALUES (%s, %s, %s, %s, %s) RETURNING id",
-        (str(repo_id), instance_id, url, link, "running")
-    )
-    '''
-    cursor.execute(
-        '''
-        INSERT INTO Deployments (repo_id, status, slot_id) VALUES (%s, %s, %s) RETURNING id
-        ''',
+    "INSERT INTO Deployments (repo_id, status, slot_id) VALUES (%s, %s, %s) RETURNING id",
         (str(repo_id), "running", slot_id)
     )
     deployment_id = cursor.fetchone()[0]
@@ -428,7 +413,7 @@ server {{
         "deployment_id": deployment_id
     }
 
-'''
+
 @app.get("/api/rollback")
 async def rollback(
     deployment_id: str,
@@ -534,7 +519,7 @@ def get_logs(
         "logs": stdout,
         "errs": stderr
     }
-'''
+
 
 
 @app.get("/api/create-ec2")
@@ -574,4 +559,4 @@ def create_ec2():
     except Exception as e:
         raise HTTPException(status_code=500, detail="Internal server error (EC2 Creation) - " + str(e))
 
-
+'''
