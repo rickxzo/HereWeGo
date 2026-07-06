@@ -14,9 +14,8 @@ async def add_secrets(
     try:
         body = await request.body()
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Internal server error (Request Body)")
-    content = body.decode("utf-8")
-    content = content.split("\n")
+        raise HTTPException(status_code=400, detail="Invalid Request Body.")
+    content = body.decode("utf-8").splitlines()
     secrets = {}
     try:
         for line in content:
@@ -24,18 +23,15 @@ async def add_secrets(
                 name, value = line.split("=", 1)
                 secrets[name.strip()] = value.strip()
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Internal server error (Processing Secrets) - " + str(e))
+        raise HTTPException(status_code=500, detail="Secrets parsing error")
 
-    '''
-    cmd = "INSERT INTO Secrets (repo_id, name, value) VALUES "
-    for name, value in secrets.items():
-        cmd += f"('{str(repo_id)}', '{name}', '{value}'),"
-    '''
     rows = [
         (str(repo_id), name, value)
         for name, value in secrets.items()
     ]
 
+    conn = None
+    cursor = None
     try:
         conn = connect_db()
         cursor = conn.cursor()
@@ -68,9 +64,16 @@ async def add_secrets(
             rows
         )
         conn.commit()
-        conn.close()
         return {"status": "secret added"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail="Internal server error (DB Insert for secrets) - " + str(e))
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(
+            status_code=500,
+            detail="DB error."
+        )
     finally:
-        conn.close()
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
