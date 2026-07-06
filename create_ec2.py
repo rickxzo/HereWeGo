@@ -29,13 +29,22 @@ def create_ec2():
             "INSERT INTO Instances (id, host) VALUES (%s, %s)", (instance_id, host)
         )
         cursor.execute(
-            "INSERT INTO Slots (instance_id, port, occupied) VALUES (%s, %s, %s), (%s, %s, %s), (%s, %s, %s), (%s, %s, %s), (%s, %s, %s)",
-            (instance_id, 3000, True, instance_id, 3001, False, instance_id,
+            """
+            INSERT INTO Slots (instance_id, port, occupied)
+            VALUES (%s, %s, %s)
+            RETURNING id
+            """,
+            (instance_id, 3000, True)
+        )
+        slot_id = cursor.fetchone()[0]
+        cursor.execute(
+            "INSERT INTO Slots (instance_id, port, occupied) VALUES (%s, %s, %s), (%s, %s, %s), (%s, %s, %s), (%s, %s, %s)",
+            (instance_id, 3001, False, instance_id,
               3002, False, instance_id, 3003, False, instance_id, 3004, False
             )
         )
         conn.commit()
         conn.close()
-        return {"instance_id": instance_id, "host": host}
+        return {"instance_id": instance_id, "host": host, "slot_id": slot_id}
     except Exception as e:
         raise HTTPException(status_code=500, detail="Internal server error (EC2 Creation) - " + str(e))
