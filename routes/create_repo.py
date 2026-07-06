@@ -12,12 +12,13 @@ def create_repo(
     domain: str,
     user_id: str = Depends(get_current_user)
 ):
+    conn = None
+    cursor = None
+
     try:
         conn = connect_db()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail="Internal server error (DB Connection)")
-    try:
         cursor = conn.cursor()
+
         cursor.execute(
             """
             INSERT INTO Repos (user_id, name, build_cmd, run_cmd, domain)
@@ -26,9 +27,23 @@ def create_repo(
             """,
             (user_id, repo_name, build, run, domain)
         )
+
         repo_id = cursor.fetchone()[0]
         conn.commit()
-        conn.close()
+
         return {"repo_id": repo_id}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Internal server error (DB Insert for repo) {str(e)}")
+
+    except Exception:
+        if conn:
+            conn.rollback()
+
+        raise HTTPException(
+            status_code=500,
+            detail="Internal server error while creating repository"
+        )
+
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
