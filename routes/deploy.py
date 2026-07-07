@@ -49,8 +49,8 @@ async def deploy_repo(
             SELECT I.id, I.host, S.port, S.id
             FROM Slots S JOIN Instances I ON I.id = S.instance_id 
             WHERE S.occupied = FALSE
-            FOR UPDATE SKIP LOCKED
-            ORDER BY S.created_at LIMIT 1;
+            ORDER BY S.created_at LIMIT 1
+            FOR UPDATE SKIP LOCKED;
             '''
         )
         slot = cursor.fetchone()  
