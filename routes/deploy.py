@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from botocore.exceptions import ClientError
 from auth import get_current_user
 from db import connect_db
 from create_ec2 import create_ec2
@@ -134,11 +135,41 @@ async def deploy_repo(
         }
     )
     command_id = response["Command"]["CommandId"]
-    time.sleep(2)
-    output = ssm.get_command_invocation(
-        CommandId=command_id,
-        InstanceId=instance_id
-    )
+
+    timeout = 600
+    elapsed = 0
+    interval = 2
+    while elapsed < timeout:
+        try:
+            output = ssm.get_command_invocation(
+                CommandId=command_id,
+                InstanceId=instance_id
+            )
+        except ClientError as e:
+            if e.response["Error"]["Code"] == "InvocationDoesNotExist":
+                time.sleep(interval)
+                elapsed += interval
+                continue
+            raise
+        status = output["Status"]
+
+        if status in ("Success", "Failed", "Cancelled", "TimedOut"):
+            break
+    
+        time.sleep(interval)
+        elapsed += interval
+    else:
+        raise HTTPException(
+            status_code=500,
+            detail="Deployment command timed out."
+        )
+
+    if status != "Success":
+        raise HTTPException(
+            status_code=500,
+            detail=output.get("StandardErrorContent") or f"Deployment failed with status: {status}"
+        )
+        
     url = f"http://{host}:{port}"
     link = f"{domain}.herewego.website"
     nginx_cmd = f"""
@@ -167,11 +198,41 @@ server {{
             ]
         }
     )
-    command_id = response["Command"]["CommandId"]
-    output = ssm.get_command_invocation(
-        CommandId=command_id,
-        InstanceId=instance_id
-    )
+    command_id = response2["Command"]["CommandId"]
+    timeout = 60
+    elapsed = 0
+    interval = 2
+    while elapsed < timeout:
+        try:
+            output = ssm.get_command_invocation(
+                CommandId=command_id,
+                InstanceId="i-0053d531be504c4a1"
+            )
+        except ClientError as e:
+            if e.response["Error"]["Code"] == "InvocationDoesNotExist":
+                time.sleep(interval)
+                elapsed += interval
+                continue
+            raise
+    
+        status = output["Status"]
+    
+        if status in ("Success", "Failed", "Cancelled", "TimedOut"):
+            break
+    
+        time.sleep(interval)
+        elapsed += interval
+    else:
+        raise HTTPException(
+            status_code=500,
+            detail="Nginx configuration timed out."
+        )
+    
+    if status != "Success":
+        raise HTTPException(
+            status_code=500,
+            detail=output.get("StandardErrorContent") or "Failed to configure nginx."
+        )
     conn = connect_db()
     cursor = conn.cursor()
     '''
