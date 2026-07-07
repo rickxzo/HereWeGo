@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from botocore.exceptions import ClientError
 from auth import get_current_user
 from db import connect_db
 import time
@@ -40,10 +41,16 @@ def get_logs(
     
         command_id = response["Command"]["CommandId"]
         for _ in range(20):
-            result = ssm.get_command_invocation(
-            CommandId=command_id,
-            InstanceId=instance_id
-        )
+            try:
+                result = ssm.get_command_invocation(
+                    CommandId=command_id,
+                    InstanceId=instance_id
+                )
+            except ClientError as e:
+                if e.response["Error"]["Code"] == "InvocationDoesNotExist":
+                    time.sleep(1)
+                    continue
+                raise
         
             if result["Status"] in ("Success","Failed","Cancelled","TimedOut"):
                 break
