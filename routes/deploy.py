@@ -16,12 +16,11 @@ async def deploy_repo(
     repo_id: UUID,
     user_id: str = Depends(get_current_user)
 ):
-    try:
-        conn = connect_db()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail="Internal server error (DB Connection in deploy)")
+    conn = None
+    cursor = None
     
     try:
+        conn = connect_db()
         cursor = conn.cursor()
         cursor.execute(
             "SELECT access_token FROM users WHERE id = %s",
@@ -31,10 +30,6 @@ async def deploy_repo(
         if not result:
             raise HTTPException(status_code=404, detail="User not found")
         github_token = result[0]
-    except Exception as e:
-        raise HTTPException(status_code=500, detail="Internal server error (DB Query for user in deploy) - " + str(e))
-    
-    try:
         cursor.execute(
             "SELECT name, build_cmd, run_cmd, domain FROM Repos WHERE id = %s AND user_id = %s",
             (str(repo_id), user_id)
@@ -43,42 +38,36 @@ async def deploy_repo(
         if not result:
             raise HTTPException(status_code=404, detail="Repo not found")
         repo_name, build, run, domain = result
-        conn.close()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail="Internal server error (DB Query in deploy) - " + str(e))
-    
-
-    clone_url = f"https://{github_token}@github.com/{repo_name}.git"
-
-
-    try:
-        conn = connect_db()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail="Internal server error (DB Connection in deploy)")
-    
-    try:
-        cursor = conn.cursor()
+        clone_url = f"https://{github_token}@github.com/{repo_name}.git"
         cursor.execute(
             "SELECT name, value FROM Secrets WHERE repo_id = %s",
             (str(repo_id),)  
         )
         secrets = cursor.fetchall()
-        conn.close()
+        cursor.execute(
+            '''
+            SELECT I.id, I.host, S.port, S.id
+            FROM Slots S JOIN Instances I ON I.id = S.instance_id 
+            WHERE S.occupied = FALSE
+            FOR UPDATE SKIP LOCKED
+            ORDER BY S.created_at LIMIT 1;
+            '''
+        )
+        slot = cursor.fetchone()  
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Internal server error (DB Query for secrets in deploy)")
+        raise HTTPException(
+            status_code=500,
+            detail="Internal server error (DB Query for user in deploy) - " + str(e)
+        )
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
     
-    conn = connect_db()
-    cursor = conn.cursor()
-    cursor.execute(
-        '''
-        SELECT I.id, I.host, S.port, S.id
-        FROM Slots S JOIN Instances I ON I.id = S.instance_id 
-        WHERE S.occupied = FALSE
-        FOR UPDATE SKIP LOCKED
-        ORDER BY S.created_at LIMIT 1;
-        '''
-    )
-    slot = cursor.fetchone()
     if not slot:
         ec2_res = create_ec2()
         instance_id = ec2_res["instance_id"]
@@ -87,13 +76,22 @@ async def deploy_repo(
         port = 3000
     else:
         instance_id, host, port, slot_id = slot
-        cursor.execute(
-            "UPDATE Slots SET occupied = true WHERE id = %s",
-            (slot_id,)
-        )
-        conn.commit()
-    conn.close()
-
+        try:
+            conn = connect_db()
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE Slots SET occupied = true WHERE id = %s",
+                (slot_id,)
+            )
+            conn.commit()
+        except Exception as e:
+            raise HTTPException(status_code=500, detail="Internal server error (DB Query for user in deploy) - " + str(e))
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                conn.close()
+                
     env_vars = ""
     for name, value in secrets:
         env_vars += f"export {name}={value}\n"
@@ -233,23 +231,26 @@ server {{
             status_code=500,
             detail=output.get("StandardErrorContent") or "Failed to configure nginx."
         )
-    conn = connect_db()
-    cursor = conn.cursor()
-    '''
-    cursor.execute(
-        "INSERT INTO Deployments (repo_id, instance_id, link, url, status) VALUES (%s, %s, %s, %s, %s) RETURNING id",
-        (str(repo_id), instance_id, url, link, "running")
-    )
-    '''
-    cursor.execute(
-        '''
-        INSERT INTO Deployments (repo_id, status, slot_id) VALUES (%s, %s, %s) RETURNING id
-        ''',
-        (str(repo_id), "running", slot_id)
-    )
-    deployment_id = cursor.fetchone()[0]
-    conn.commit()
-    conn.close()
+
+    try:
+        conn = connect_db()
+        cursor = conn.cursor()
+        cursor.execute(
+            '''
+            INSERT INTO Deployments (repo_id, status, slot_id) VALUES (%s, %s, %s) RETURNING id
+            ''',
+            (str(repo_id), "running", slot_id)
+        )
+        deployment_id = cursor.fetchone()[0]
+        conn.commit()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Internal server error (DB Query for user in deploy) - " + str(e))
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+            
     return {
         "status": "deploy started",
         "url": link,
