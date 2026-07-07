@@ -57,10 +57,10 @@ def rollback(
                 InstanceId=instance_id
             )
         except ClientError as e:
-            raise HTTPException(
-                status_code=500,
-                detail=e.response["Error"]
-            )
+            if e.response["Error"]["Code"] == "InvocationDoesNotExist":
+                time.sleep(1)
+                continue
+            raise
         if output["Status"] in (
             "Success",
             "Failed",
