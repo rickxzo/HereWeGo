@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from botocore.exceptions import ClientError
 from auth import get_current_user
 from db import connect_db
 import time
@@ -55,8 +56,11 @@ def rollback(
                 CommandId=command_id,
                 InstanceId=instance_id
             )
-        except Exception:
-            raise HTTPException(500, "Failed to contact deployment instance")
+        except ClientError as e:
+            raise HTTPException(
+                status_code=500,
+                detail=e.response["Error"]
+            )
         if output["Status"] in (
             "Success",
             "Failed",
