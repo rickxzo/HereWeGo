@@ -70,7 +70,7 @@ async def add_secrets(
     except Exception:
         raise HTTPException(
             status_code=500,
-            detail="DB error."
+            detail=repr(e)
         )
     finally:
         if cursor:
