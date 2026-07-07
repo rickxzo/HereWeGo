@@ -15,9 +15,9 @@ async def add_secrets(
         body = await request.body()
     except Exception as e:
         raise HTTPException(status_code=400, detail="Invalid Request Body.")
-    content = body.decode("utf-8").splitlines()
-    secrets = {}
     try:
+        content = body.decode("utf-8").splitlines()
+        secrets = {}
         for line in content:
             if "=" in line:
                 name, value = line.split("=", 1)
