@@ -38,7 +38,7 @@ async def add_secrets(
         cursor.execute(
             """
             SELECT user_id
-            FROM Repositories
+            FROM Repos
             WHERE repo_id = %s
             """,
             (str(repo_id),)
